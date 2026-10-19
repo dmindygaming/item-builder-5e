@@ -1,0 +1,211 @@
+.item-builder-5e .window-content{padding:0;overflow:hidden}
+.item-builder-5e .ib33-root{height:100%;display:flex;flex-direction:column}
+.item-builder-5e .ib33-root .top{padding:1rem 1.2rem;border-bottom:1px solid #7775;background:#7771}
+.item-builder-5e .ib33-root .top h1{margin:0}
+.item-builder-5e .ib33-root .top small{font-size:.5em;opacity:.6}
+.item-builder-5e .ib33-root .top p{margin:.25rem 0 0;opacity:.72}
+.item-builder-5e .ib33-root .tabs{display:flex;gap:.25rem;padding:.35rem .6rem;border-bottom:1px solid #7775}
+.item-builder-5e .ib33-root .tabs button{width:auto;border:0;background:transparent;padding:.55rem .75rem}
+.item-builder-5e .ib33-root .tabs button.active{background:#7772;box-shadow:inset 0 -2px 0 currentColor}
+.item-builder-5e .ib33-root .body{display:grid;grid-template-columns:minmax(0,1fr) 330px;flex:1;min-height:0}
+.item-builder-5e .ib33-root .body>section{padding:1rem 1.1rem 2rem;overflow:auto}
+.item-builder-5e .ib33-root .body>aside{padding:1rem;border-left:1px solid #7775;background:#7771;overflow:auto}
+.item-builder-5e .ib33-root .body>aside h2{margin-top:0}
+.item-builder-5e .ib33-root .preview,.item-builder-5e .ib33-root .help{border:1px solid #7775;border-radius:8px;padding:.8rem}
+.item-builder-5e .ib33-root .help{margin-top:.8rem;line-height:1.35}
+.item-builder-5e .ib33-root .muted{opacity:.65;text-transform:capitalize}
+.item-builder-5e .ib33-root .grid2{display:grid;grid-template-columns:1fr 1fr;gap:.8rem 1rem}
+.item-builder-5e .ib33-root .body label{display:block;font-weight:600;margin:.35rem 0}
+.item-builder-5e .ib33-root .body input:not([type=checkbox]),.item-builder-5e .ib33-root .body select,.item-builder-5e .ib33-root .body textarea{display:block;width:100%;margin-top:.25rem}
+.item-builder-5e .ib33-root .body select[multiple]{min-height:7rem}
+.item-builder-5e .ib33-root .body .check{display:flex;align-items:center;gap:.4rem}
+.item-builder-5e .ib33-root .body .check input{width:auto}
+.item-builder-5e .ib33-root .tip{cursor:help;opacity:.55;margin-left:.25rem}
+.item-builder-5e .ib33-root .callout{display:flex;gap:.65rem;padding:.8rem;margin:1rem 0;border:1px solid #5482be55;background:#5482be18;border-radius:8px}
+.item-builder-5e .ib33-root .callout.progression{border-color:#a9803c66;background:#a9803c18;line-height:1.4}
+.item-builder-5e .ib33-root .section-head{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem}
+.item-builder-5e .ib33-root .section-head h2{margin:.1rem 0}
+.item-builder-5e .ib33-root .section-head p{margin:.2rem 0 .8rem;opacity:.7}
+.item-builder-5e .ib33-root .section-head button,.item-builder-5e .ib33-root .add button{width:auto}
+.item-builder-5e .ib33-root .add{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:.35rem}
+.item-builder-5e .ib33-root .component{border:1px solid #7775;border-radius:8px;margin-bottom:.9rem;overflow:hidden}
+.item-builder-5e .ib33-root .component>header{display:flex;align-items:center;justify-content:space-between;gap:.5rem;padding:.5rem .65rem;background:#7772}
+.item-builder-5e .ib33-root .component>header>div{display:flex;gap:.5rem;align-items:center;flex:1}
+.item-builder-5e .ib33-root .component>header input{font-weight:700}
+.item-builder-5e .ib33-root .component>header button{width:auto;min-width:2rem}
+.item-builder-5e .ib33-root .badge{text-transform:uppercase;font-size:.68rem;padding:.2rem .35rem;border-radius:4px;background:#7773}
+.item-builder-5e .ib33-root .meta{padding:.45rem .7rem;border-top:1px solid #7773;border-bottom:1px solid #7773}
+.item-builder-5e .ib33-root .meta label{display:flex;align-items:center;gap:.5rem;margin:0}
+.item-builder-5e .ib33-root .meta select{width:auto;margin:0}
+.item-builder-5e .ib33-root .component-body{padding:.7rem}
+.item-builder-5e .ib33-root .empty{min-height:240px;display:flex;flex-direction:column;align-items:center;justify-content:center;opacity:.65}
+.item-builder-5e .ib33-root .tier-list{display:flex;flex-direction:column;gap:.4rem;margin:1rem 0}
+.item-builder-5e .ib33-root .tier-row{display:grid;grid-template-columns:2.2rem 1fr 2.2rem;gap:.5rem;align-items:center}
+.item-builder-5e .ib33-root .tier-row>span{display:grid;place-items:center;width:2rem;height:2rem;border-radius:50%;background:#7773;font-weight:700}
+.item-builder-5e .ib33-root .tier-row button{width:auto}
+.item-builder-5e .ib33-root .tier-summary{border-left:3px solid #7775;padding:.35rem .7rem;margin:.55rem 0}
+.item-builder-5e .ib33-root .tier-summary p,.item-builder-5e .ib33-root .tier-summary ul{margin:.35rem 0}
+.item-builder-5e .ib33-root footer{display:flex;justify-content:flex-end;padding:.6rem .8rem;border-top:1px solid #7775}
+.item-builder-5e .ib33-root footer button{width:auto;font-weight:700}
+.ib33-directory-button{margin-top:.35rem}
+@media(max-width:900px){
+  .item-builder-5e .ib33-root .body{grid-template-columns:1fr}
+  .item-builder-5e .ib33-root .body>aside{border-left:0;border-top:1px solid #7775;max-height:270px}
+  .item-builder-5e .ib33-root .grid2{grid-template-columns:1fr}
+}
+
+.ib38-edit-button{width:auto!important;margin:.25rem!important}
+
+
+
+/* Compact GM-only sheet-header controls.
+   These use unique module-specific classes and do not style native sheet controls. */
+.ib310-sheet-button {
+  position: relative;
+  display: inline-grid !important;
+  place-items: center;
+  flex: 0 0 28px !important;
+  width: 28px !important;
+  min-width: 28px !important;
+  max-width: 28px !important;
+  height: 28px !important;
+  min-height: 28px !important;
+  margin: 0 2px !important;
+  padding: 0 !important;
+  line-height: 1 !important;
+  white-space: nowrap;
+  border-radius: 4px;
+}
+
+.ib310-sheet-button > i {
+  margin: 0 !important;
+  padding: 0 !important;
+  font-size: 12px;
+  pointer-events: none;
+}
+
+.ib310-tier-badge {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  display: grid;
+  place-items: center;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 7px;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  background: var(--color-bg-btn, #333);
+  border: 1px solid currentColor;
+  pointer-events: none;
+}
+
+
+.item-builder-5e .ib33-root .ib311-field-block {
+  min-width: 0;
+}
+
+.item-builder-5e .ib33-root .ib311-label {
+  font-weight: 600;
+  margin: .35rem 0 .25rem;
+}
+
+.item-builder-5e .ib33-root .ib311-check-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .2rem .55rem;
+  max-height: 145px;
+  overflow: auto;
+  padding: .4rem;
+  border: 1px solid #7775;
+  border-radius: 5px;
+  background: #2222;
+}
+
+.item-builder-5e .ib33-root .ib311-check-option {
+  display: flex !important;
+  align-items: center;
+  gap: .35rem;
+  margin: 0 !important;
+  font-weight: 400 !important;
+}
+
+.item-builder-5e .ib33-root .ib311-check-option input {
+  width: auto !important;
+  margin: 0 !important;
+}
+
+.item-builder-5e .ib33-root .component.rule-card { border-left: 5px solid #777; }
+.item-builder-5e .ib33-root .component.rule-card.offensive { border-left-color: #b44335; }
+.item-builder-5e .ib33-root .component.rule-card.defensive { border-left-color: #3473a8; }
+.item-builder-5e .ib33-root .component.rule-card.healing { border-left-color: #348358; }
+.item-builder-5e .ib33-root .component.rule-card.utility { border-left-color: #7956a8; }
+.item-builder-5e .ib33-root .rule-category > h3 { margin: .1rem 0 .75rem; padding-bottom: .45rem; border-bottom: 1px solid #7775; }
+.item-builder-5e .ib33-root .rule-note { font-size: .85em; opacity: .72; margin: .7rem 0 0; }
+.item-builder-5e .ib33-root .ib315-money { display: grid; grid-template-columns: minmax(0, 1fr) 8rem; gap: 0; align-items: stretch; box-sizing: border-box; height: 2.15rem; margin-top: .25rem; overflow: hidden; border: 1px solid var(--color-border-light-tertiary, #777); border-radius: 3px; background: var(--input-background-color, rgba(0,0,0,.25)); }
+.item-builder-5e .ib33-root .basics-grid { align-items: end; }
+.item-builder-5e .ib33-root .ib315-money input,.item-builder-5e .ib33-root .ib315-money select { box-sizing: border-box; height: 100% !important; min-height: 0 !important; max-height: none !important; margin: 0 !important; border: 0 !important; border-radius: 0 !important; background: transparent !important; box-shadow: none !important; }
+.item-builder-5e .ib33-root .ib315-money select { border-left: 1px solid var(--color-border-light-tertiary, #777) !important; }
+.item-builder-5e .ib33-root .ib315-money select { color-scheme: dark; color: var(--color-text-light-highlight, #f0e6d2) !important; }
+.item-builder-5e .ib33-root .ib315-money select option { background: #2f2832; color: #f0e6d2; }
+.item-builder-5e .ib33-root .ib324-abilities { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: .3rem .8rem; }
+.item-builder-5e .ib33-root .ib324-abilities legend { grid-column: 1 / -1; }
+.item-builder-5e .ib33-root .ib324-abilities label { display: flex; align-items: center; gap: .35rem; font-weight: 500; }
+.item-builder-5e .ib33-root .ib324-abilities input { width: auto; margin: 0; }
+.item-builder-5e .ib33-root .basics-grid > label > input:not([type=checkbox]),.item-builder-5e .ib33-root .basics-grid > label > select { box-sizing: border-box; height: 2.15rem !important; min-height: 2.15rem !important; max-height: 2.15rem !important; }
+
+/* v0.5.0 — export / import */
+.item-builder-5e .ib33-root .top{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem}
+.item-builder-5e .ib33-root .ib50-top-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:.35rem}
+.item-builder-5e .ib33-root .ib50-top-actions button{width:auto;white-space:nowrap}
+.ib50-directory-row{display:flex;gap:.3rem;align-items:stretch;margin-top:.35rem}
+.ib50-directory-row .ib33-directory-button{flex:1;margin-top:0}
+.ib50-directory-row .ib50-directory-icon{flex:0 0 2.2rem;width:2.2rem;min-width:2.2rem;padding:0;display:grid;place-items:center}
+.ib50-directory-row button i{margin:0}
+
+.item-builder-5e.ib50-portability .window-content{padding:0;overflow:hidden}
+.item-builder-5e .ib50-root{height:100%;display:flex;flex-direction:column;gap:.6rem;padding:.8rem 1rem;overflow:auto;box-sizing:border-box}
+.item-builder-5e .ib50-root h3{margin:.4rem 0 .2rem}
+.item-builder-5e .ib50-root h3 small{opacity:.65;font-weight:400}
+.item-builder-5e .ib50-intro,.item-builder-5e .ib50-hint{margin:0;opacity:.8;line-height:1.35}
+.item-builder-5e .ib50-controls{display:flex;flex-wrap:wrap;gap:.4rem 1rem;align-items:center}
+.item-builder-5e .ib50-controls input[type=search]{flex:1 1 100%}
+.item-builder-5e .ib50-controls label{display:flex;align-items:center;gap:.35rem}
+.item-builder-5e .ib50-list{flex:1;min-height:160px;overflow:auto;border:1px solid #7775;border-radius:6px;padding:.4rem}
+.item-builder-5e .ib50-list.compact{flex:0 1 auto;max-height:240px}
+.item-builder-5e .ib50-group{border:0;border-top:1px solid #7774;margin:0 0 .4rem;padding:.25rem 0 0}
+.item-builder-5e .ib50-group legend{font-weight:700;padding:0 .3rem}
+.item-builder-5e .ib50-group legend label{display:flex;align-items:center;gap:.35rem}
+.item-builder-5e .ib50-item{display:grid;grid-template-columns:auto 24px minmax(0,1fr) auto;align-items:center;gap:.45rem;padding:.15rem .25rem;border-radius:4px}
+.item-builder-5e .ib50-item:hover{background:#7772}
+.item-builder-5e .ib50-item img{width:24px;height:24px;border:0;object-fit:cover}
+.item-builder-5e .ib50-item span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.item-builder-5e .ib50-item small{opacity:.6;text-transform:capitalize;white-space:nowrap}
+.item-builder-5e .ib50-empty{opacity:.65;text-align:center;margin:2rem 0}
+.item-builder-5e .ib50-footer{display:flex;gap:.4rem;align-items:center;justify-content:flex-end;border-top:1px solid #7775;padding-top:.6rem;margin-top:auto}
+.item-builder-5e .ib50-footer button{width:auto}
+.item-builder-5e .ib50-footer .primary{font-weight:700}
+.item-builder-5e .ib50-count{margin-right:auto;opacity:.75}
+.item-builder-5e .ib50-file{display:flex;align-items:center;gap:.7rem}
+.item-builder-5e .ib50-file-button{display:inline-flex;align-items:center;gap:.4rem;cursor:pointer;padding:.35rem .7rem;border:1px solid #7777;border-radius:4px;background:#7772;font-weight:600}
+.item-builder-5e .ib50-file span{opacity:.75;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.item-builder-5e .ib50-source{border:1px solid #7775;border-radius:6px;padding:.5rem .7rem;line-height:1.45;background:#7771}
+.item-builder-5e .ib50-note{margin:0;padding:.4rem .6rem;border-radius:5px;border:1px solid #5482be55;background:#5482be18}
+.item-builder-5e .ib50-note.warn{border-color:#a9803c77;background:#a9803c1c}
+.item-builder-5e .ib50-note.error{border-color:#b4433588;background:#b4433520}
+.item-builder-5e .ib50-options{display:grid;gap:.45rem}
+.item-builder-5e .ib50-options label{display:block;font-weight:600}
+.item-builder-5e .ib50-options select,.item-builder-5e .ib50-options input{display:block;width:100%;margin-top:.2rem}
+.item-builder-5e .ib50-summary h4{margin:.6rem 0 .2rem}
+.item-builder-5e .ib50-summary ul{margin:.2rem 0 .4rem 1.2rem;padding:0}
+
+/* v0.6.0 — how each rule is applied */
+.item-builder-5e .ib33-root .ib60-handling{display:flex;gap:.55rem;align-items:flex-start;margin:0 0 .7rem;padding:.5rem .65rem;border-radius:6px;border:1px solid #7775;line-height:1.35;font-size:.92em}
+.item-builder-5e .ib33-root .ib60-handling>i{margin-top:.15rem}
+.item-builder-5e .ib33-root .ib60-handling.native{border-color:#34835877;background:#3483581c}
+.item-builder-5e .ib33-root .ib60-handling.runtime{border-color:#5482be77;background:#5482be1c}
+.item-builder-5e .ib33-root .ib60-handling.reference{border-color:#a9803c77;background:#a9803c1c}
+.item-builder-5e .ib33-root .ib60-handling em{opacity:.8}
+.item-builder-5e .ib33-root .ib60-tag{display:inline-block;font-size:.72em;padding:.05rem .35rem;border-radius:3px;background:#7773;white-space:nowrap}
