@@ -1,0 +1,50 @@
+# Builds and attaches the Foundry package whenever a release is published.
+# Tag the release with the version, e.g. v0.8.1. The workflow stamps that version and the
+# matching download link into module.json, so Foundry's "Update" button finds the new build.
+name: Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Stamp version and links
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          VERSION="${TAG#v}"
+          jq --arg v "$VERSION" --arg repo "$REPO" --arg tag "$TAG" '
+            .version = $v
+            | .url = "https://github.com/\($repo)"
+            | .manifest = "https://github.com/\($repo)/releases/latest/download/module.json"
+            | .download = "https://github.com/\($repo)/releases/download/\($tag)/item-builder-5e.zip"
+            | .bugs = "https://github.com/\($repo)/issues"
+            | .changelog = "https://github.com/\($repo)/blob/main/CHANGELOG.md"
+          ' module.json > module.tmp && mv module.tmp module.json
+          sed -i "s/^const MODULE_VERSION = \".*\";/const MODULE_VERSION = \"$VERSION\";/" scripts/main.mjs
+          echo "Packaging version $VERSION"
+
+      - name: Check syntax
+        run: for f in scripts/*.mjs; do node --check "$f"; done
+
+      - name: Build zip
+        run: |
+          FILES="module.json scripts styles"
+          for f in README.md CHANGELOG.md LICENSE; do [ -f "$f" ] && FILES="$FILES $f"; done
+          zip -r item-builder-5e.zip $FILES -x "*.DS_Store"
+
+      - name: Attach to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            module.json
+            item-builder-5e.zip
