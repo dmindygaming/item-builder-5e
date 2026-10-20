@@ -332,3 +332,16 @@ export function slug(text, fallback="items") {
     .replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-+|-+$/g, "").toLowerCase();
   return s || fallback;
 }
+
+/**
+ * Remove the feature list and prerequisite line that Item Builder before 0.8.1 appended to item
+ * descriptions (they showed up in chat cards). Anything the GM wrote is kept.
+ */
+export function stripBuilderDescription(html) {
+  if ( typeof html !== "string" ) return html;
+  return html
+    .replace(/<h2[^>]*>\s*Item Builder Features\s*<\/h2>\s*<ul[^>]*>[\s\S]*?<\/ul>/gi, "")
+    .replace(/<p[^>]*>\s*<strong>\s*Prerequisite:\s*<\/strong>[\s\S]*?<\/p>/gi, "")
+    .replace(/^(\s*<p>\s*<\/p>\s*)+$/i, "")
+    .trim();
+}

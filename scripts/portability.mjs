@@ -14,7 +14,7 @@
  */
 
 import {
-  MODULE_ID, downloadJSON, isDnd5e6, readFileText, readRarity, resolveUuid, slug, systemVersion,
+  MODULE_ID, downloadJSON, stripBuilderDescription, isDnd5e6, readFileText, readRarity, resolveUuid, slug, systemVersion,
   withEffectChanges, writeRarity
 } from "./compat.mjs";
 import { syncRuleEffects } from "./rules.mjs";
@@ -302,7 +302,9 @@ async function upgradeImportedRules(item) {
     if ( !item?.flags?.[MODULE_ID] ) return;
     if ( (item.getFlag(MODULE_ID, "components") ?? []).some(c => c.type === "conditional") ) await syncRuleEffects(item);
     if ( (Number(item.getFlag(MODULE_ID, "schemaVersion")) || 0) < 10 ) await upgradeHalfAsi(item);
-    await item.setFlag(MODULE_ID, "schemaVersion", 10);
+    const html = item.system?.description?.value ?? "";
+    const clean = stripBuilderDescription(html);
+    await item.update({ [`flags.${MODULE_ID}.schemaVersion`]: 11, ...(clean !== html ? { "system.description.value": clean } : {}) });
   } catch (err) {
     console.warn(`${MODULE_ID} | could not rebuild rules on imported ${item?.name}`, err);
   }

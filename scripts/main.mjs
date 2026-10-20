@@ -1,6 +1,6 @@
 import {
   MODULE_ID, effectChangesUpdate, halfAsiChange, movementKey, normalizeAttunement,
-  readEffectChanges, readRarity, remapChangeKey, resolveUuid, resolveUuidSync, senseKey, statusEffectList,
+  readEffectChanges, readRarity, stripBuilderDescription, remapChangeKey, resolveUuid, resolveUuidSync, senseKey, statusEffectList,
   withEffectChanges, writeRarity
 } from "./compat.mjs";
 import { ItemExportApp, ItemImportApp, exportItemsToFile } from "./portability.mjs";
@@ -11,7 +11,7 @@ import {
   itemHasOwnUse, ruleFromComponent, ruleHandling, syncRuleEffects
 } from "./rules.mjs";
 
-const MODULE_VERSION = "0.8.0";
+const MODULE_VERSION = "0.8.1";
 const { ApplicationV2, DialogV2 } = foundry.applications.api;
 
 const esc = v => foundry.utils.escapeHTML(String(v ?? ""));
@@ -1027,17 +1027,15 @@ class ItemBuilder5e extends ApplicationV2 {
 
     data.system ??= {};
     data.system.description ??= {value:"",chat:""};
-    const reference=[];
+    // The description is only what the GM wrote: no generated feature list in the item or its chat card.
+    data.system.description.value=b.description.trim()?`<p>${esc(b.description).replace(/\n/g,"<br>")}</p>`:"";
     if(b.category==="feat"){
+      // Prerequisites go in D&D5e's own Requirements field.
       const req=[];
       if(b.levelRequirement)req.push(`Level ${Number(b.levelRequirement)}`);
       if(b.requirementAbility&&b.requirementScore)req.push(`${loc(cfg("abilities",{})[b.requirementAbility],b.requirementAbility)} ${Number(b.requirementScore)}`);
-      if(req.length)reference.push(`<p><strong>Prerequisite:</strong> ${esc(req.join(", "))}</p>`);
+      if(req.length)data.system.requirements=req.join(", ");
     }
-    if(b.components.length){
-      reference.push(`<h2>Item Builder Features</h2><ul>${b.components.map(c=>`<li>${esc(this._savedComponentText(c)).replace(/\n/g,"<br>")}</li>`).join("")}</ul>`);
-    }
-    data.system.description.value=`<p>${esc(b.description).replace(/\n/g,"<br>")}</p>${reference.join("")}`;
     if(b.category==="feat"){
       if(!data.system.type||typeof data.system.type!=="object")data.system.type={};
       data.system.type.value="feat";
@@ -1080,7 +1078,7 @@ class ItemBuilder5e extends ApplicationV2 {
     let nativeAsi={ids:{},removed:[]};
     if(data.type==="feat")nativeAsi=applyNativeAsi(data,b.components,Object.keys(cfg("abilities",{})),()=>foundry.utils.randomID());
     data.flags[MODULE_ID]={
-      schemaVersion:10,nativeAsiIds:nativeAsi.ids,nativePatches:data.flags?.[MODULE_ID]?.nativePatches??"",currentTier:b.currentTier,tiers:foundry.utils.deepClone(b.tiers),
+      schemaVersion:11,nativeAsiIds:nativeAsi.ids,nativePatches:data.flags?.[MODULE_ID]?.nativePatches??"",currentTier:b.currentTier,tiers:foundry.utils.deepClone(b.tiers),
       components:foundry.utils.deepClone(b.components),
       rules:b.components.filter(c=>c.type==="conditional").map(c=>this._rule(c)),
       category:b.category,baseUuid:b.baseUuid,enhancementBonus:Number(b.enhancementBonus)||0,
@@ -1245,6 +1243,23 @@ async function migrateManagedEffects(){
           if(components.some(c=>c.type==="conditional")){await syncRuleEffects(item);rebuilt++;}
           if(await upgradeHalfAsi(item))rebuilt++;
           await item.setFlag(MODULE_ID,"schemaVersion",10);
+        }catch(err){console.warn(`${MODULE_ID} | could not rebuild rules on ${item.name}`,err)}
+      }
+      // 0.8.1: descriptions hold only the GM's text (the generated feature list showed in chat cards).
+      if((Number(item.getFlag(MODULE_ID,"schemaVersion"))||0)<11){
+        try{
+          const html=item.system?.description?.value??"";
+          const clean=stripBuilderDescription(html);
+          const update={[`flags.${MODULE_ID}.schemaVersion`]:11};
+          if(clean!==html)update["system.description.value"]=clean;
+          // The prerequisite line moves to D&D5e's own Requirements field.
+          if(item.type==="feat"&&!item.system?.requirements){
+            const f=item.flags[MODULE_ID],req=[];
+            if(f.levelRequirement)req.push(`Level ${Number(f.levelRequirement)}`);
+            if(f.requirementAbility&&f.requirementScore)req.push(`${loc(cfg("abilities",{})[f.requirementAbility],f.requirementAbility)} ${Number(f.requirementScore)}`);
+            if(req.length)update["system.requirements"]=req.join(", ");
+          }
+          await item.update(update);
         }catch(err){console.warn(`${MODULE_ID} | could not rebuild rules on ${item.name}`,err)}
       }
       for(const effect of item.effects){
