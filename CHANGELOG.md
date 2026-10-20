@@ -2,6 +2,12 @@
 
 All notable changes to Item Builder 5e.
 
+## v0.8.1 Clean item descriptions
+
+- Item descriptions, and the chat cards made from them, now contain only the description you write. Item Builder no longer adds an "Item Builder Features" list. The builder's preview still shows what each feature does.
+- Feat prerequisites go in D&D5e's own **Requirements** field instead of the description.
+- Existing items are cleaned up once, the next time the GM logs in. Imported items are cleaned on import. Only the generated list and prerequisite line are removed; anything you wrote stays.
+
 ## v0.8.0 Built into the item first
 
 Every rule that D&D5e can represent in its own data is now written into the item itself, with no toggles and no extra activities. Those rules work the same with or without Midi-QOL, AC5e or other roll modules, and keep working if Item Builder is disabled.
