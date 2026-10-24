@@ -2,6 +2,13 @@
 
 All notable changes to Item Builder 5e.
 
+## v0.9.1 Uses as a selection, tidier component buttons
+
+- **Uses** on Reactions and granted Spells is now a selection: Unlimited, Fixed number, Proficiency bonus, Ability modifier (minimum 1), or Proficiency bonus + ability modifier. Ability modes show an ability selection, and Recovery only appears for limited uses. The uses scale automatically as the character levels up or their ability scores change.
+- Components saved with a typed uses value keep working and show the matching selection.
+- Recovery for granted spells can also be Dawn or Day.
+- The **Add component** buttons are grouped into labeled rows: Character Traits, Actions and Rule Effects, with even button sizes.
+
 ## v0.9.0 Reactions, and clearer rule cards
 
 ### Reactions
