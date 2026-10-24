@@ -2,23 +2,24 @@
 
 All notable changes to Item Builder 5e.
 
-## v1.0.0 Version 1.0
+## v1.0.1 In-game guide
 
-- Version numbering continues from 0.9.x to **1.0.x**. This release contains everything in 0.10.0 and 0.10.1 (Change Size, token resizing, the attunement fix); those two releases are the same features under their old numbers.
-- Change Size checked in a live world (Foundry 14, D&D5e 6.0.6, Midi-QOL, DAE): one size larger makes a Medium character Large with a 2×2 token, two sizes Huge with 3×3, and unattuning puts it back to Medium and 1×1.
+- New **Item Builder Guide** window with a linked table of contents. Every section says exactly where its feature is (for example "Components → Actions → Reaction") and how it works: the Basics, Description, Components and Progression tabs, every component and rule effect, Uses & Recovery, tiers and GM notes, item sheet buttons, export and import, what works without Item Builder, and troubleshooting.
+- Open it from the builder's **Guide** button (it opens at the tab you're on), the **book** icon in the Items sidebar, or Game Settings → Configure Settings → Item Builder 5e → **Open Guide**.
 
-## v0.10.1 Attunement fix, size names
+## v1.0.0 Change Size, attunement fix
 
+### Change Size
+- **Grow** or **shrink** by 1–3 size categories relative to the creature's normal size (Enlarge-style: Medium → Large, Small → Medium), capped at Tiny and Gargantuan, or **become a set size**.
+- Built into the item as an Active Effect on the creature's size, so the sheet, carrying capacity and anything else that reads size update with or without Item Builder. It follows the item's equipped/attuned state and tiers like other rules. (On D&D5e 6 growth is relative natively; on 5.3 Item Builder works out the resulting size from the owner's normal size.)
+- **Tokens are resized automatically** (needs Item Builder): when the size changes, every token of that creature on the map and its prototype token are set to the new size (Large = 2×2, Huge = 3×3…), and back again when the item is unequipped, removed, or the tier drops. Only creatures with a Change Size item are ever resized.
+
+### Fixes
 - **Fixed: attunement not sticking.** D&D5e ignores attunement on items that are not marked **Magical**, so an item set to "Attunement Required" showed no attunement once it was on a character. Items with attunement or a rarity are now marked Magical when saved. Existing Item Builder items that require attunement are fixed once, the next time the GM logs in, and imported items are fixed on import.
 - Editing an item now reads its saved attunement, so saving it again no longer clears the setting.
 - Change Size lists size names: "One size larger (Small → Medium, Medium → Large)" and so on.
 
-## v0.10.0 Change Size
-
-New **Utility / Control → Change Size** rule:
-- **Grow** or **shrink** by 1–3 size categories relative to the creature's normal size (Enlarge-style: Medium → Large, Small → Medium), capped at Tiny and Gargantuan, or **become a set size**.
-- Built into the item as an Active Effect on the creature's size, so the sheet, carrying capacity and anything else that reads size update with or without Item Builder. It follows the item's equipped/attuned state and tiers like other rules. (On D&D5e 6 growth is relative natively; on 5.3 Item Builder works out the resulting size from the owner's normal size.)
-- **Tokens are resized automatically** (needs Item Builder): when the size changes, every token of that creature on the map and its prototype token are set to the new size (Large = 2×2, Huge = 3×3…), and back again when the item is unequipped, removed, or the tier drops. Only creatures with a Change Size item are ever resized.
+Version numbering continues from 0.9.x to 1.0.x.
 
 ## v0.9.3 Search inside the dropdown
 

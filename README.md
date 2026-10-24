@@ -14,6 +14,10 @@ https://github.com/dmindygaming/item-builder-5e/releases/latest/download/module.
 
 Foundry will then offer updates automatically whenever a new version is released.
 
+## Using it
+
+Inside Foundry, open the **Item Builder Guide** for a linked walkthrough of every feature and where it is: the **Guide** button in the builder, the **book** icon in the Items sidebar, or **Game Settings → Configure Settings → Item Builder 5e → Open Guide**.
+
 ## Releasing an update (maintainers)
 
 1. Commit the changes to `main` and add a section to `CHANGELOG.md`.
