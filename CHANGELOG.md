@@ -2,6 +2,11 @@
 
 All notable changes to Item Builder 5e.
 
+## v1.0.0 Version 1.0
+
+- Version numbering continues from 0.9.x to **1.0.x**. This release contains everything in 0.10.0 and 0.10.1 (Change Size, token resizing, the attunement fix); those two releases are the same features under their old numbers.
+- Change Size checked in a live world (Foundry 14, D&D5e 6.0.6, Midi-QOL, DAE): one size larger makes a Medium character Large with a 2×2 token, two sizes Huge with 3×3, and unattuning puts it back to Medium and 1×1.
+
 ## v0.10.1 Attunement fix, size names
 
 - **Fixed: attunement not sticking.** D&D5e ignores attunement on items that are not marked **Magical**, so an item set to "Attunement Required" showed no attunement once it was on a character. Items with attunement or a rarity are now marked Magical when saved. Existing Item Builder items that require attunement are fixed once, the next time the GM logs in, and imported items are fixed on import.
