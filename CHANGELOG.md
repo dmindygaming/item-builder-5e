@@ -2,6 +2,12 @@
 
 All notable changes to Item Builder 5e.
 
+## v0.10.1 Attunement fix, size names
+
+- **Fixed: attunement not sticking.** D&D5e ignores attunement on items that are not marked **Magical**, so an item set to "Attunement Required" showed no attunement once it was on a character. Items with attunement or a rarity are now marked Magical when saved. Existing Item Builder items that require attunement are fixed once, the next time the GM logs in, and imported items are fixed on import.
+- Editing an item now reads its saved attunement, so saving it again no longer clears the setting.
+- Change Size lists size names: "One size larger (Small → Medium, Medium → Large)" and so on.
+
 ## v0.10.0 Change Size
 
 New **Utility / Control → Change Size** rule:
