@@ -209,3 +209,10 @@
 .item-builder-5e .ib33-root .ib60-handling.reference{border-color:#a9803c77;background:#a9803c1c}
 .item-builder-5e .ib33-root .ib60-handling em{opacity:.8}
 .item-builder-5e .ib33-root .ib60-tag{display:inline-block;font-size:.72em;padding:.05rem .35rem;border-radius:3px;background:#7773;white-space:nowrap}
+
+/* v0.9.0 rule cards: optional conditions grouped, plain-English summary */
+.item-builder-5e .ib33-root .ib80-conditions { margin: .8rem 0 0; padding: .4rem .7rem .7rem; border: 1px dashed #7777; border-radius: 6px; }
+.item-builder-5e .ib33-root .ib80-conditions legend { padding: 0 .35rem; font-weight: 700; }
+.item-builder-5e .ib33-root .ib80-conditions .hint { margin: .1rem 0 .5rem; font-size: .85em; opacity: .75; }
+.item-builder-5e .ib33-root .ib80-summary { margin: .75rem 0 0; padding: .5rem .7rem; border-radius: 6px; background: #7772; font-style: italic; line-height: 1.35; }
+.item-builder-5e .ib33-root .ib80-summary > i { opacity: .5; margin-right: .3rem; font-size: .8em; }
