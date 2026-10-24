@@ -2,6 +2,13 @@
 
 All notable changes to Item Builder 5e.
 
+## v0.10.0 Change Size
+
+New **Utility / Control → Change Size** rule:
+- **Grow** or **shrink** by 1–3 size categories relative to the creature's normal size (Enlarge-style: Medium → Large, Small → Medium), capped at Tiny and Gargantuan, or **become a set size**.
+- Built into the item as an Active Effect on the creature's size, so the sheet, carrying capacity and anything else that reads size update with or without Item Builder. It follows the item's equipped/attuned state and tiers like other rules. (On D&D5e 6 growth is relative natively; on 5.3 Item Builder works out the resulting size from the owner's normal size.)
+- **Tokens are resized automatically** (needs Item Builder): when the size changes, every token of that creature on the map and its prototype token are set to the new size (Large = 2×2, Huge = 3×3…), and back again when the item is unequipped, removed, or the tier drops. Only creatures with a Change Size item are ever resized.
+
 ## v0.9.3 Search inside the dropdown
 
 - The Base Item and Spell lists are now dropdowns with the search field **inside** the open list, replacing the separate search box from 0.9.2. Open the list (or just start typing on it), type part of a name, then click a result or use the arrow keys and Enter. Escape or clicking elsewhere closes it.
