@@ -264,9 +264,9 @@ export class ItemBuilderHelp extends ApplicationV2 {
   }
 
   async _renderHTML() {
-    const div = document.createElement("div");
-    div.innerHTML = renderGuide();
-    return div;
+    const tpl = document.createElement("template");
+    tpl.innerHTML = renderGuide().trim();
+    return tpl.content.firstElementChild;   // the .ibh-root grid itself, so it fills the window
   }
 
   _replaceHTML(result, content) {
@@ -277,9 +277,9 @@ export class ItemBuilderHelp extends ApplicationV2 {
       const id = a.dataset.jump;
       const target = id === "toc" ? content.querySelector(".ibh-toc") : content.querySelector(`#ibh-${id}`);
       if ( !target ) return;
-      if ( id === "toc" ) { body.scrollTo({ top: 0, behavior: "smooth" }); content.querySelector(".ibh-toc").scrollTo({ top: 0 }); return; }
-      const top = body.scrollTop + target.getBoundingClientRect().top - body.getBoundingClientRect().top - 6;
-      body.scrollTo({ top, behavior: "smooth" });
+      if ( id === "toc" ) { body.scrollTop = 0; content.querySelector(".ibh-toc").scrollTop = 0; return; }
+      // Jump straight there: smooth scrolling is unreliable inside Foundry windows.
+      body.scrollTop = body.scrollTop + target.getBoundingClientRect().top - body.getBoundingClientRect().top - 6;
       target.classList.remove("ibh-flash"); void target.offsetWidth; target.classList.add("ibh-flash");
     }));
     if ( this.section ) requestAnimationFrame(() => content.querySelector(`[data-jump="${this.section}"]`)?.click());
