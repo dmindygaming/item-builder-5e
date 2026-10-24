@@ -5,6 +5,7 @@ import {
 } from "./compat.mjs";
 import { ItemExportApp, ItemImportApp, exportItemsToFile } from "./portability.mjs";
 import { applyNativeAsi, halfAsiHandled, halfAsiIsNative, upgradeHalfAsi } from "./asi.mjs";
+import { enhanceSearchableSelects } from "./combo.mjs";
 import { REACTION_EFFECTS, REACTION_TRIGGERS, reactionSummary, syncReactions } from "./reactions.mjs";
 import {
   DAMAGE_RULES, DEFENSIVE_TRIGGERS, FORMULA_RULES, OFFENSIVE_DAMAGE_RULES, ROLL_TARGETS, RULE_CATEGORIES,
@@ -12,7 +13,7 @@ import {
   itemHasOwnUse, ruleFromComponent, ruleHandling, syncRuleEffects
 } from "./rules.mjs";
 
-const MODULE_VERSION = "0.9.2";
+const MODULE_VERSION = "0.9.3";
 const { ApplicationV2, DialogV2 } = foundry.applications.api;
 
 const esc = v => foundry.utils.escapeHTML(String(v ?? ""));
@@ -246,7 +247,6 @@ class ItemBuilder5e extends ApplicationV2 {
       progressionNotes:"",
       components:[]
     };
-    this._searches = {};
 
     if (this.editItem) this._hydrateFromItem(this.editItem);
   }
@@ -530,29 +530,6 @@ class ItemBuilder5e extends ApplicationV2 {
     return [...out];
   }
 
-  /** A filter box that narrows the options of the select named `target`. */
-  _searchBox(target, placeholder) {
-    return `<span class="ib91-search"><i class="fa-solid fa-magnifying-glass"></i><input type="search" data-search-for="${esc(target)}" value="${esc(this._searches?.[target] ?? "")}" placeholder="${esc(placeholder)}" autocomplete="off"><small data-search-count="${esc(target)}"></small></span>`;
-  }
-
-  _applySearch(input) {
-    const target = input.dataset.searchFor;
-    const select = this.element?.querySelector(`select[name="${CSS.escape(target)}"]`);
-    if ( !select ) return;
-    const terms = String(input.value ?? "").trim().toLowerCase().split(/\s+/).filter(Boolean);
-    (this._searches ??= {})[target] = input.value;
-    let shown = 0, firstMatch = null;
-    for ( const opt of select.options ) {
-      if ( !opt.value ) { opt.hidden = false; continue; }
-      const hit = !terms.length || terms.every(t => opt.textContent.toLowerCase().includes(t));
-      opt.hidden = !hit && !opt.selected;
-      if ( hit ) { shown++; firstMatch ??= opt; }
-    }
-    const count = this.element.querySelector(`[data-search-count="${CSS.escape(target)}"]`);
-    if ( count ) count.textContent = terms.length ? `${shown} match${shown === 1 ? "" : "es"}` : "";
-    return firstMatch;
-  }
-
   _catalogOptions(entries, selected="", placeholder="Choose a base item…") {
     const out = [`<option value="">${esc(placeholder)}</option>`];
     // De-duplication may hide the exact copy an existing item references (another
@@ -590,20 +567,10 @@ class ItemBuilder5e extends ApplicationV2 {
       e.preventDefault(); this._capture(); this.activeTab=e.currentTarget.dataset.tab; this.render({force:true});
     }));
 
-    el.querySelectorAll("input[data-search-for]").forEach(input=>{
-      if(input.value)this._applySearch(input);
-      input.addEventListener("input",e=>{e.stopPropagation();this._applySearch(input);});
-      input.addEventListener("keydown",e=>{
-        if(e.key!=="Enter")return;
-        e.preventDefault();
-        // Enter picks the first match, like a combo box.
-        const first=this._applySearch(input);
-        const select=el.querySelector(`select[name="${CSS.escape(input.dataset.searchFor)}"]`);
-        if(first&&select&&select.value!==first.value){select.value=first.value;select.dispatchEvent(new Event("change",{bubbles:true}));}
-      });
-    });
+    // Long lists (base items, spells) open as dropdowns with a search field inside.
+    enhanceSearchableSelects(el);
 
-    el.querySelectorAll("input:not([data-search-for]),select,textarea").forEach(n=>{
+    el.querySelectorAll("input:not(.ib92-combo input),select,textarea").forEach(n=>{
       n.addEventListener("input",()=>{this._capture();this._refreshPreview();this._refreshHandling();});
       n.addEventListener("change",()=>{this._capture();this._refreshPreview();this._refreshHandling();});
     });
@@ -835,7 +802,7 @@ class ItemBuilder5e extends ApplicationV2 {
           </select></label>`:""}
 
         ${baseList.length?`<label>Base Item ${this._tip("Starts from an actual D&D5e compendium item, preserving its native weapon/armor/equipment data. Your custom name and components are layered on top.")}
-          ${this._searchBox("baseUuid",`Search ${({weapon:"weapons",armor:"armor and shields",focus:"foci",equipment:"equipment"})[b.category]??"items"}…`)}<select name="baseUuid">${this._catalogOptions(baseList,b.baseUuid,"Choose a native base item…")}</select></label>`:
+          <select name="baseUuid" data-searchable="Search ${({weapon:"weapons",armor:"armor and shields",focus:"foci",equipment:"equipment"})[b.category]??"items"}…">${this._catalogOptions(baseList,b.baseUuid,"Choose a native base item…")}</select></label>`:
           (["weapon","armor","focus","equipment"].includes(b.category)?`<label>Base Item<select disabled><option>No matching compendium items found</option></select></label>`:"")}
 
         ${["weapon","armor"].includes(b.category)?`<label>Enhancement Bonus ${this._tip("Creates the native magical +1, +2, or +3 version of the selected mundane base item. Weapons receive the bonus to attack and damage; armor and shields receive the bonus to AC.")}
@@ -959,7 +926,7 @@ class ItemBuilder5e extends ApplicationV2 {
     if(c.type==="reference")body=`<label>Rules Text ${this._tip("Reference text for mechanics that Item Builder does not automate, such as allowing a two-handed weapon to be wielded in one hand.")}<textarea name="c.${i}.text" rows="5" placeholder="You can wield this two-handed weapon with one hand.">${esc(c.text)}</textarea></label><p class="hint">This is displayed in the item's description and preview but does not apply automation.</p>`;
     if(c.type==="spell")body=`<div class="grid2">
       <label>Spell ${this._tip("Choose a spell by name from your available D&D5e spell compendiums. No UUID entry is required.")}
-        ${this._searchBox(`c.${i}.spellUuid`,"Search spells…")}<select name="c.${i}.spellUuid">${this._catalogOptions(this.catalog.spells,c.spellUuid,"Choose a spell…")}</select></label>
+        <select name="c.${i}.spellUuid" data-searchable="Search spells…">${this._catalogOptions(this.catalog.spells,c.spellUuid,"Choose a spell…")}</select></label>
       <label>Casting Ability<select name="c.${i}.castingAbility"><option value="">Actor / spell default</option>${abilityOptions(c.castingAbility)}</select></label>
       <label>Casting Level<input type="number" min="0" max="9" name="c.${i}.level" value="${esc(c.level)}" placeholder="Spell default"></label>
       <label class="check"><input type="checkbox" name="c.${i}.displayInSpellbook" ${c.displayInSpellbook?"checked":""}> Show in Item Spells</label>
