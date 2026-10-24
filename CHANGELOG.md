@@ -2,6 +2,10 @@
 
 All notable changes to Item Builder 5e.
 
+## v1.0.2 Guide navigation fix
+
+- Fixed: clicking a contents entry or an in-text link in the Item Builder Guide did nothing. The guide's text now scrolls inside its own panel, and every link jumps straight to its section (checked in Foundry 14). Any section, including the last ones, can be brought to the top.
+
 ## v1.0.1 In-game guide
 
 - New **Item Builder Guide** window with a linked table of contents. Every section says exactly where its feature is (for example "Components → Actions → Reaction") and how it works: the Basics, Description, Components and Progression tabs, every component and rule effect, Uses & Recovery, tiers and GM notes, item sheet buttons, export and import, what works without Item Builder, and troubleshooting.
