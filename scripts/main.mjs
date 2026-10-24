@@ -12,7 +12,7 @@ import {
   itemHasOwnUse, ruleFromComponent, ruleHandling, syncRuleEffects
 } from "./rules.mjs";
 
-const MODULE_VERSION = "0.9.1";
+const MODULE_VERSION = "0.9.2";
 const { ApplicationV2, DialogV2 } = foundry.applications.api;
 
 const esc = v => foundry.utils.escapeHTML(String(v ?? ""));
@@ -243,8 +243,10 @@ class ItemBuilder5e extends ApplicationV2 {
         {id:rid(),name:"Tier 2"},
         {id:rid(),name:"Tier 3"}
       ],
+      progressionNotes:"",
       components:[]
     };
+    this._searches = {};
 
     if (this.editItem) this._hydrateFromItem(this.editItem);
   }
@@ -267,6 +269,7 @@ class ItemBuilder5e extends ApplicationV2 {
     this.builderData.requirementAbility = String(ib.requirementAbility ?? "");
     this.builderData.requirementScore = String(ib.requirementScore ?? "");
     this.builderData.editingUuid = item.uuid;
+    this.builderData.progressionNotes = String(ib.progressionNotes ?? "");
 
     const cat = ib.category;
     if (cat==="shield") {this.builderData.category="armor";this.builderData.armorType="shield";}
@@ -527,6 +530,29 @@ class ItemBuilder5e extends ApplicationV2 {
     return [...out];
   }
 
+  /** A filter box that narrows the options of the select named `target`. */
+  _searchBox(target, placeholder) {
+    return `<span class="ib91-search"><i class="fa-solid fa-magnifying-glass"></i><input type="search" data-search-for="${esc(target)}" value="${esc(this._searches?.[target] ?? "")}" placeholder="${esc(placeholder)}" autocomplete="off"><small data-search-count="${esc(target)}"></small></span>`;
+  }
+
+  _applySearch(input) {
+    const target = input.dataset.searchFor;
+    const select = this.element?.querySelector(`select[name="${CSS.escape(target)}"]`);
+    if ( !select ) return;
+    const terms = String(input.value ?? "").trim().toLowerCase().split(/\s+/).filter(Boolean);
+    (this._searches ??= {})[target] = input.value;
+    let shown = 0, firstMatch = null;
+    for ( const opt of select.options ) {
+      if ( !opt.value ) { opt.hidden = false; continue; }
+      const hit = !terms.length || terms.every(t => opt.textContent.toLowerCase().includes(t));
+      opt.hidden = !hit && !opt.selected;
+      if ( hit ) { shown++; firstMatch ??= opt; }
+    }
+    const count = this.element.querySelector(`[data-search-count="${CSS.escape(target)}"]`);
+    if ( count ) count.textContent = terms.length ? `${shown} match${shown === 1 ? "" : "es"}` : "";
+    return firstMatch;
+  }
+
   _catalogOptions(entries, selected="", placeholder="Choose a base item…") {
     const out = [`<option value="">${esc(placeholder)}</option>`];
     // De-duplication may hide the exact copy an existing item references (another
@@ -564,7 +590,20 @@ class ItemBuilder5e extends ApplicationV2 {
       e.preventDefault(); this._capture(); this.activeTab=e.currentTarget.dataset.tab; this.render({force:true});
     }));
 
-    el.querySelectorAll("input,select,textarea").forEach(n=>{
+    el.querySelectorAll("input[data-search-for]").forEach(input=>{
+      if(input.value)this._applySearch(input);
+      input.addEventListener("input",e=>{e.stopPropagation();this._applySearch(input);});
+      input.addEventListener("keydown",e=>{
+        if(e.key!=="Enter")return;
+        e.preventDefault();
+        // Enter picks the first match, like a combo box.
+        const first=this._applySearch(input);
+        const select=el.querySelector(`select[name="${CSS.escape(input.dataset.searchFor)}"]`);
+        if(first&&select&&select.value!==first.value){select.value=first.value;select.dispatchEvent(new Event("change",{bubbles:true}));}
+      });
+    });
+
+    el.querySelectorAll("input:not([data-search-for]),select,textarea").forEach(n=>{
       n.addEventListener("input",()=>{this._capture();this._refreshPreview();this._refreshHandling();});
       n.addEventListener("change",()=>{this._capture();this._refreshPreview();this._refreshHandling();});
     });
@@ -658,7 +697,8 @@ class ItemBuilder5e extends ApplicationV2 {
     b.description=v("description")??b.description;
     b.currentTier=Number(v("currentTier")??b.currentTier)||1;
 
-    b.tiers.forEach((t,i)=>t.name=v(`tier.${i}.name`)??t.name);
+    b.tiers.forEach((t,i)=>{t.name=v(`tier.${i}.name`)??t.name;t.gmNote=v(`tier.${i}.gmNote`)??t.gmNote??"";});
+    b.progressionNotes=v("progressionNotes")??b.progressionNotes??"";
 
     b.components.forEach((c,i)=>{
       c.name=v(`c.${i}.name`)??c.name;
@@ -795,7 +835,7 @@ class ItemBuilder5e extends ApplicationV2 {
           </select></label>`:""}
 
         ${baseList.length?`<label>Base Item ${this._tip("Starts from an actual D&D5e compendium item, preserving its native weapon/armor/equipment data. Your custom name and components are layered on top.")}
-          <select name="baseUuid">${this._catalogOptions(baseList,b.baseUuid,"Choose a native base item…")}</select></label>`:
+          ${this._searchBox("baseUuid",`Search ${({weapon:"weapons",armor:"armor and shields",focus:"foci",equipment:"equipment"})[b.category]??"items"}…`)}<select name="baseUuid">${this._catalogOptions(baseList,b.baseUuid,"Choose a native base item…")}</select></label>`:
           (["weapon","armor","focus","equipment"].includes(b.category)?`<label>Base Item<select disabled><option>No matching compendium items found</option></select></label>`:"")}
 
         ${["weapon","armor"].includes(b.category)?`<label>Enhancement Bonus ${this._tip("Creates the native magical +1, +2, or +3 version of the selected mundane base item. Weapons receive the bonus to attack and damage; armor and shields receive the bonus to AC.")}
@@ -919,7 +959,7 @@ class ItemBuilder5e extends ApplicationV2 {
     if(c.type==="reference")body=`<label>Rules Text ${this._tip("Reference text for mechanics that Item Builder does not automate, such as allowing a two-handed weapon to be wielded in one hand.")}<textarea name="c.${i}.text" rows="5" placeholder="You can wield this two-handed weapon with one hand.">${esc(c.text)}</textarea></label><p class="hint">This is displayed in the item's description and preview but does not apply automation.</p>`;
     if(c.type==="spell")body=`<div class="grid2">
       <label>Spell ${this._tip("Choose a spell by name from your available D&D5e spell compendiums. No UUID entry is required.")}
-        <select name="c.${i}.spellUuid">${this._catalogOptions(this.catalog.spells,c.spellUuid,"Choose a spell…")}</select></label>
+        ${this._searchBox(`c.${i}.spellUuid`,"Search spells…")}<select name="c.${i}.spellUuid">${this._catalogOptions(this.catalog.spells,c.spellUuid,"Choose a spell…")}</select></label>
       <label>Casting Ability<select name="c.${i}.castingAbility"><option value="">Actor / spell default</option>${abilityOptions(c.castingAbility)}</select></label>
       <label>Casting Level<input type="number" min="0" max="9" name="c.${i}.level" value="${esc(c.level)}" placeholder="Spell default"></label>
       <label class="check"><input type="checkbox" name="c.${i}.displayInSpellbook" ${c.displayInSpellbook?"checked":""}> Show in Item Spells</label>
@@ -1009,10 +1049,13 @@ class ItemBuilder5e extends ApplicationV2 {
     const b=this.builderData;
     return `<div class="section-head"><div><h2>Progression</h2><p>Create Dormant/Awakened/Exalted items or any other tier structure.</p></div><button type="button" data-add-tier><i class="fa-solid fa-plus"></i> Add Tier</button></div>
       <div class="callout progression"><i class="fa-solid fa-hand-pointer"></i><div><strong>How to progress the item manually:</strong><br>1. Create the item.<br>2. Open that item's sheet.<br>3. Click the <b>Item Builder Tier</b> button at the top of the sheet.<br>4. Choose the new tier.<br>5. Click <b>Apply</b>.<br><br>Any components whose <b>Begins at</b> tier has now been reached will activate.</div></div>
-      <div class="tier-list">${b.tiers.map((t,i)=>`<div class="tier-row"><span>${i+1}</span><input name="tier.${i}.name" value="${esc(t.name)}"><button type="button" data-remove-tier="${i}"><i class="fa-solid fa-trash"></i></button></div>`).join("")}</div>
+      <div class="tier-list">${b.tiers.map((t,i)=>`<div class="ib91-tier"><div class="tier-row"><span>${i+1}</span><input name="tier.${i}.name" value="${esc(t.name)}"><button type="button" data-remove-tier="${i}" title="Remove tier"><i class="fa-solid fa-trash"></i></button></div>
+        <label class="ib91-note"><i class="fa-solid fa-eye-slash"></i> ${i===0?"Starting state":"How it reaches this tier"} <span class="muted">(GM only)</span><textarea name="tier.${i}.gmNote" rows="2" placeholder="${i===0?"e.g. Found dormant in the lich's vault; the wielder doesn't know its true name.":"e.g. Awakens when the wielder lands the killing blow on a dragon."}">${esc(t.gmNote??"")}</textarea></label></div>`).join("")}</div>
+      <label class="ib91-note"><i class="fa-solid fa-eye-slash"></i> Progression Notes <span class="muted">(GM only)</span> ${this._tip("Your own reminders about how this item grows. Shown only to GMs: here and in the tier window on the item sheet. Players never see it.")}
+        <textarea name="progressionNotes" rows="4" placeholder="e.g. Ties to Kaelen's backstory. Reveal the second tier's name only after the temple session.">${esc(b.progressionNotes??"")}</textarea></label>
       <label>Starting Tier<select name="currentTier">${tierOptions(b.tiers,b.currentTier)}</select></label>
       <h3>Unlock Summary</h3>
-      ${b.tiers.map((t,i)=>{const list=b.components.filter(c=>Number(c.tier)===i+1);return `<div class="tier-summary"><strong>${esc(t.name)}</strong>${list.length?`<ul>${list.map(c=>`<li>${esc(c.name)}</li>`).join("")}</ul>`:"<p>No new components.</p>"}</div>`}).join("")}`;
+      ${b.tiers.map((t,i)=>{const list=b.components.filter(c=>Number(c.tier)===i+1);return `<div class="tier-summary"><strong>${esc(t.name)}</strong>${t.gmNote?`<p class="ib91-summary-note"><i class="fa-solid fa-eye-slash"></i> ${esc(t.gmNote)}</p>`:""}${list.length?`<ul>${list.map(c=>`<li>${esc(c.name)}</li>`).join("")}</ul>`:"<p>No new components.</p>"}</div>`}).join("")}`;
   }
 
   _previewText(c){
@@ -1194,7 +1237,7 @@ class ItemBuilder5e extends ApplicationV2 {
     let nativeAsi={ids:{},removed:[]};
     if(data.type==="feat")nativeAsi=applyNativeAsi(data,b.components,Object.keys(cfg("abilities",{})),()=>foundry.utils.randomID());
     data.flags[MODULE_ID]={
-      schemaVersion:11,nativeAsiIds:nativeAsi.ids,nativePatches:data.flags?.[MODULE_ID]?.nativePatches??"",reactions:data.flags?.[MODULE_ID]?.reactions??"",currentTier:b.currentTier,tiers:foundry.utils.deepClone(b.tiers),
+      schemaVersion:11,nativeAsiIds:nativeAsi.ids,nativePatches:data.flags?.[MODULE_ID]?.nativePatches??"",reactions:data.flags?.[MODULE_ID]?.reactions??"",progressionNotes:b.progressionNotes||"",currentTier:b.currentTier,tiers:foundry.utils.deepClone(b.tiers),
       components:foundry.utils.deepClone(b.components),
       rules:b.components.filter(c=>c.type==="conditional").map(c=>this._rule(c)),
       category:b.category,baseUuid:b.baseUuid,enhancementBonus:Number(b.enhancementBonus)||0,
@@ -1533,7 +1576,10 @@ function injectItemBuilderSheetControls(app, element){
       tierButton.addEventListener("click",async e=>{
         e.preventDefault();
         e.stopPropagation();
-        const content=`<form><div class="form-group"><label>Current Tier</label><select name="tier">${tierOptions(tiers,current)}</select></div></form>`;
+        const notes=String(item.getFlag(MODULE_ID,"progressionNotes")??"").trim();
+        const tierNotes=tiers.map((t,i)=>`<li class="${i+1===current?"current":""}"><strong>${esc(t.name??`Tier ${i+1}`)}</strong>${i+1===current?" <em>(current)</em>":""}${t.gmNote?`<br>${esc(t.gmNote).replace(/\n/g,"<br>")}`:""}</li>`).join("");
+        const hasNotes=notes||tiers.some(t=>t.gmNote);
+        const content=`<form class="ib91-tier-dialog"><div class="form-group"><label>Current Tier</label><select name="tier">${tierOptions(tiers,current)}</select></div>${hasNotes?`<div class="ib91-gm-notes"><p><i class="fa-solid fa-eye-slash"></i> <strong>GM notes</strong></p><ol>${tierNotes}</ol>${notes?`<p>${esc(notes).replace(/\n/g,"<br>")}</p>`:""}</div>`:""}</form>`;
         const result=await DialogV2.prompt({
           window:{title:`${item.name}: Progression Tier`},
           content,
