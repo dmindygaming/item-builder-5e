@@ -5,13 +5,14 @@ import {
 } from "./compat.mjs";
 import { ItemExportApp, ItemImportApp, exportItemsToFile } from "./portability.mjs";
 import { applyNativeAsi, halfAsiHandled, halfAsiIsNative, upgradeHalfAsi } from "./asi.mjs";
+import { REACTION_EFFECTS, REACTION_TRIGGERS, reactionSummary, syncReactions } from "./reactions.mjs";
 import {
   DAMAGE_RULES, DEFENSIVE_TRIGGERS, FORMULA_RULES, OFFENSIVE_DAMAGE_RULES, ROLL_TARGETS, RULE_CATEGORIES,
   STATUS_TARGETS, handlingLabel, hasAutomationEffect, participantLabels, triggerOptions, match, registerRuleHooks, ruleDiagnostic,
   itemHasOwnUse, ruleFromComponent, ruleHandling, syncRuleEffects
 } from "./rules.mjs";
 
-const MODULE_VERSION = "0.8.1";
+const MODULE_VERSION = "0.9.0";
 const { ApplicationV2, DialogV2 } = foundry.applications.api;
 
 const esc = v => foundry.utils.escapeHTML(String(v ?? ""));
@@ -67,6 +68,68 @@ function creatureSubtypeOptions(selected="") {
   if(selected)values.add(String(selected).trim().toLowerCase());
   const choices=Object.fromEntries([...values].sort((a,b)=>a.localeCompare(b)).map(value=>[value,value.replace(/\b\w/g,c=>c.toUpperCase())]));
   return `<option value="">Any Subtype</option>${selectOptions(choices,String(selected).toLowerCase(),false)}`;
+}
+
+
+/** Which side of a rule is always the item's own user (its creature filters would only ever test the user). */
+function selfSide(c){
+  if(c.ruleCategory==="healing")return null;
+  const p=participantLabels(c);
+  if(/item user|effect user/i.test(p.source))return "source";
+  if(/item user|effect user/i.test(p.target))return "target";
+  return null;
+}
+
+function listText(items,joiner="or"){
+  if(items.length<2)return items.join("");
+  return `${items.slice(0,-1).join(", ")} ${joiner} ${items.at(-1)}`;
+}
+
+/** One plain-English sentence describing a rule card, for the builder. */
+function ruleSentence(c){
+  const f=String(c.formula??"").trim()||"?";
+  const dt=c.damageType&&c.damageType!=="any"?loc(cfg("damageTypes",{})[c.damageType],c.damageType).toLowerCase():"";
+  const ab=c.ability?loc(cfg("abilities",{})[c.ability],c.ability):"";
+  const effect={
+    extraDamage:`Deals an extra ${f}${dt?` ${dt}`:""} damage`,
+    sameTypeDamage:`Deals an extra ${f} damage when the attack deals ${dt||"the chosen"} damage`,
+    attackBonus:`+${f} to attack rolls`,
+    attackAdvantage:"Advantage on attack rolls",
+    reachBonus:`+${f} ft. reach`,
+    resistance:`Resistance to ${dt||"all"} damage`,
+    immunity:`Immunity to ${dt||"all"} damage`,
+    vulnerability:`Vulnerability to ${dt||"all"} damage`,
+    acBonus:`+${f} AC`,
+    saveBonus:`+${f} to ${ab?`${ab} `:""}saving throws`,
+    saveAdvantage:`Advantage on ${ab?`${ab} `:""}saving throws`,
+    bonusHealing:`Healing you do restores ${f} more`,
+    healingReceived:`Healing you receive changes by ${f}`,
+    temporaryHp:`Grants ${f} temporary hit points`,
+    recoveryBonus:`+${f} per Hit Die spent`,
+    movementControl:`${f} ft. ${loc(cfg("movementTypes",{})[c.ability||"walk"],c.ability||"walk").toLowerCase()} speed`,
+    advantage:`Advantage on ${(ROLL_TARGETS[c.rollTarget||"attack"]??"rolls").toLowerCase()}`,
+    disadvantage:`Disadvantage on ${(ROLL_TARGETS[c.rollTarget||"attack"]??"rolls").toLowerCase()}`
+  }[c.effect]??(RULE_CATEGORIES[c.ruleCategory]?.effects?.[c.effect]??"This effect");
+  const parts=[effect];
+  if(c.ruleCategory==="defensive"){
+    const trig=c.trigger||"damage";
+    let t;
+    if(["saveBonus","saveAdvantage"].includes(c.effect))t={saveAgainstMagic:"against spells and magical effects",saveAgainstSpell:"against spells"}[trig]??"";
+    else if(c.effect==="acBonus")t={melee:"against melee attacks",ranged:"against ranged attacks",spell:"against spell attacks"}[trig]??"against attacks";
+    else t=String(triggerOptions(c.effect)[trig]??"").toLowerCase();
+    if(t)parts.push(t);
+  }
+  const types=k=>(c[k]??[]).map(t=>loc(cfg("creatureTypes",{})[t],t).toLowerCase());
+  const p=participantLabels(c);
+  const who=(label,list,sub)=>{
+    const bits=[];if(list.length)bits.push(listText(list));if(sub)bits.push(`${sub} subtype`);
+    return bits.length?`the ${label.split(/\s*[/(]/)[0].trim().toLowerCase()} is ${bits.join(", ")}`:"";
+  };
+  const filters=[who(p.source,types("sourceTypes"),c.sourceSubtype),who(p.target,types("targetTypes"),c.targetSubtype)].filter(Boolean);
+  if(String(c.activityName??"").trim())filters.push(`the attack or ability is named “${String(c.activityName).trim()}”`);
+  let out=parts.join(" ");
+  out+=filters.length?`, only when ${listText(filters,"and")}.`:`, always.`;
+  return out;
 }
 
 function creatureMulti(selected=[]) {
@@ -518,6 +581,7 @@ class ItemBuilder5e extends ApplicationV2 {
       this.render({force:true});
     }));
     el.querySelectorAll('select[name$=".rollTarget"],select[name$=".appliesTo"]').forEach(sel=>sel.addEventListener("change",()=>{this._capture();this.render({force:true});}));
+    el.querySelectorAll('select[name$=".reactionEffect"],select[name$=".trigger"]').forEach(sel=>sel.addEventListener("change",()=>{this._capture();this.render({force:true});}));
     el.querySelectorAll('select[name$=".selectionMode"]').forEach(sel=>sel.addEventListener("change",()=>{this._capture();this.render({force:true});}));
 
     el.querySelectorAll("[data-add-component]").forEach(btn=>btn.addEventListener("click",e=>{
@@ -599,6 +663,9 @@ class ItemBuilder5e extends ApplicationV2 {
         if(abilityKeys.some(k=>checked(`c.${i}.allowedAbility.${k}`)!==undefined))c.allowedAbilities=abilityKeys.filter(k=>checked(`c.${i}.allowedAbility.${k}`));
       }
       if(c.type==="reference")c.text=v(`c.${i}.text`)??c.text;
+      if(c.type==="reaction"){
+        for(const k of ["trigger","triggerText","reactionEffect","formula","damageType","saveAbility","saveDC","onSave","uses","recovery","text"])c[k]=v(`c.${i}.${k}`)??c[k];
+      }
       if(c.type==="spell"){
         c.spellUuid=v(`c.${i}.spellUuid`)??c.spellUuid;
         const displayInSpellbook=checked(`c.${i}.displayInSpellbook`);
@@ -754,6 +821,8 @@ class ItemBuilder5e extends ApplicationV2 {
     const el=this.element;if(!el)return;
     this.builderData.components.forEach((c,i)=>{
       if(c.type!=="conditional")return;
+      const sum=el.querySelector(`[data-summary="${i}"]`);
+      if(sum)sum.innerHTML=`<i class="fa-solid fa-quote-left"></i> ${esc(ruleSentence(c))}`;
       const node=el.querySelector(`[data-handling="${i}"]`);
       if(!node)return;
       const tmp=document.createElement("div");tmp.innerHTML=this._handlingBanner(c,i);
@@ -780,6 +849,7 @@ class ItemBuilder5e extends ApplicationV2 {
     if(type==="ability")Object.assign(c,{name:"Ability Score",ability:"str",mode:"add",value:"2"});
     if(type==="halfAsi")Object.assign(c,{name:"2024 Half-ASI",selectionMode:"choice",ability:"str",allowedAbilities:Object.keys(cfg("abilities",{})),selectedAbility:""});
     if(type==="reference")Object.assign(c,{name:"Special Rule",text:""});
+    if(type==="reaction")Object.assign(c,{name:"Reaction",trigger:"hit",triggerText:"",reactionEffect:"acBonus",formula:"2",damageType:"any",saveAbility:"dex",saveDC:"13",onSave:"half",uses:"",recovery:"lr",text:""});
     if(type==="spell")Object.assign(c,{name:"Granted Spell",spellUuid:"",displayInSpellbook:true,castingAbility:"",level:"",uses:"",recovery:"none"});
     if(type==="skill")Object.assign(c,{name:"Skill Training",skill:"acr",proficiency:"1",ability:""});
     if(RULE_CATEGORIES[type])Object.assign(c,{type:"conditional",ruleCategory:type,name:RULE_CATEGORIES[type].label,sourceTypes:[],sourceSubtype:"",targetSubtype:"",activityName:"",targetTypes:[],effect:Object.keys(RULE_CATEGORIES[type].effects)[0],formula:type==="offensive"?"1d6":"",damageType:type==="offensive"?"radiant":"any",canCrit:false,ability:"",status:"",activeEffectKey:"",activeEffectMode:"2",activeEffectValue:"",trigger:type==="defensive"?"damage":"",rollTarget:"attack",skill:"",appliesTo:"self"});
@@ -794,6 +864,7 @@ class ItemBuilder5e extends ApplicationV2 {
       ${this.builderData.category==="feat"?`<button type="button" data-add-component="halfAsi"><i class="fa-solid fa-arrow-up-1-9"></i> 2024 Half-ASI</button>`:""}
       <button type="button" data-add-component="spell"><i class="fa-solid fa-wand-sparkles"></i> Spell</button>
       <button type="button" data-add-component="skill"><i class="fa-solid fa-graduation-cap"></i> Skill</button>
+      <button type="button" data-add-component="reaction"><i class="fa-solid fa-bolt-lightning"></i> Reaction</button>
       <button type="button" data-add-component="reference"><i class="fa-solid fa-align-left"></i> Rules Text</button>
       <button type="button" data-add-component="offensive"><i class="fa-solid fa-burst"></i> Offensive Effect</button>
       <button type="button" data-add-component="defensive"><i class="fa-solid fa-shield-halved"></i> Defensive Effect</button>
@@ -814,6 +885,27 @@ class ItemBuilder5e extends ApplicationV2 {
     if(c.type==="halfAsi"){
       const allowed=new Set(c.allowedAbilities??Object.keys(cfg("abilities",{})));
       body=`<div class="grid2"><label>Who Chooses?<select name="c.${i}.selectionMode"><option value="choice" ${c.selectionMode==="choice"?"selected":""}>Player Chooses</option><option value="fixed" ${c.selectionMode==="fixed"?"selected":""}>GM Sets Ability</option></select></label>${c.selectionMode==="fixed"?`<label>Ability<select name="c.${i}.ability">${abilityOptions(c.ability)}</select></label>`:`<fieldset class="ib324-abilities"><legend>Allowed Player Choices</legend>${Object.entries(cfg("abilities",{})).map(([key,value])=>`<label><input type="checkbox" name="c.${i}.allowedAbility.${key}" ${allowed.has(key)?"checked":""}> ${esc(loc(value,key))}</label>`).join("")}</fieldset>`}<label>Increase<input value="+1 (maximum 20)" disabled></label></div>${halfAsiIsNative(c,this._nativeItemType())?`<div class="ib60-handling native"><i class="fa-solid fa-layer-group"></i><div><strong>Built into the feat</strong> — written as D&D5e Ability Score Improvement advancement, so D&D5e asks for (or applies) the +1 when the feat is dropped on a character. Works even with Item Builder disabled.</div></div>`:`<div class="ib60-handling runtime"><i class="fa-solid fa-bolt"></i><div><strong>Applied by Item Builder</strong> — D&D5e advancement cannot wait for a later tier, so this +1 is an Active Effect; the player is prompted when the tier unlocks or the feat is added.</div></div>`}`;
+    }
+    if(c.type==="reaction"){
+      const e=c.reactionEffect;
+      const fLabel={acBonus:["AC Bonus","2"],reduceDamage:["Reduce Damage By","5, @prof, or 1d10 + @prof"],damageAttacker:["Damage","2d6"],saveAttacker:["Damage on a Failed Save","2d6"],healSelf:["Hit Points Regained","1d8 + @prof"],tempHp:["Temporary Hit Points","1d6 + @prof"],saveBonus:["Saving Throw Bonus","2"]}[e];
+      const dmgType=["resistance","reduceDamage"].includes(e)
+        ?`<label>Damage Type<select name="c.${i}.damageType"><option value="any" ${c.damageType==="any"?"selected":""}>Any Damage</option>${standardDamageOptions(c.damageType==="any"?"":c.damageType)}</select></label>`
+        :["damageAttacker","saveAttacker"].includes(e)?`<label>Damage Type<select name="c.${i}.damageType">${standardDamageOptions(c.damageType==="any"?"force":c.damageType)}</select></label>`:"";
+      const saveFields=e==="saveAttacker"?`<label>Save Ability<select name="c.${i}.saveAbility">${abilityOptions(c.saveAbility)}</select></label><label>Save DC<input name="c.${i}.saveDC" value="${esc(c.saveDC)}" placeholder="13 or 8 + @prof + @abilities.con.mod"></label><label>On a Successful Save<select name="c.${i}.onSave"><option value="half" ${c.onSave!=="none"?"selected":""}>Half damage</option><option value="none" ${c.onSave==="none"?"selected":""}>No damage</option></select></label>`:"";
+      const note=e==="reduceDamage"?"A fixed amount (such as 5 or @prof) is applied automatically when the player uses the reaction before damage is applied. A rolled amount is rolled on the card for the player to subtract.":["acBonus","resistance","saveBonus"].includes(e)?"Using the reaction applies the effect to the user until the start of their next turn.":"";
+      body=`<div class="grid2">
+        <label>Trigger ${this._tip("Shown on the character sheet and chat card as the reaction's trigger.")}<select name="c.${i}.trigger">${selectOptions(REACTION_TRIGGERS,c.trigger||"hit",false)}</select></label>
+        ${c.trigger==="custom"?`<label>Custom Trigger<input name="c.${i}.triggerText" value="${esc(c.triggerText)}" placeholder="When a creature within 5 feet of you casts a spell"></label>`:""}
+        <label>What Happens<select name="c.${i}.reactionEffect">${selectOptions(REACTION_EFFECTS,e,false)}</select></label>
+        ${fLabel?`<label>${fLabel[0]}<input name="c.${i}.formula" value="${esc(c.formula)}" placeholder="${esc(fLabel[1])}"></label>`:""}
+        ${dmgType}${saveFields}
+        <label>Uses ${this._tip("Leave blank for unlimited (it still costs the reaction).")}<input name="c.${i}.uses" value="${esc(c.uses)}" placeholder="Unlimited"></label>
+        <label>Recovery<select name="c.${i}.recovery">${selectOptions({lr:"Long Rest",sr:"Short Rest",dawn:"Dawn",day:"Day",none:"Never"},c.recovery||"lr",false)}</select></label>
+      </div>
+      <label>Rules Text (optional) ${this._tip("Shown on the chat card when the reaction is used.")}<textarea name="c.${i}.text" rows="2">${esc(c.text)}</textarea></label>
+      <div class="ib60-handling native"><i class="fa-solid fa-layer-group"></i><div><strong>Built into the item</strong> — added as a D&D5e activity with Reaction activation${note?`. ${esc(note)}`:"."} Works even with Item Builder disabled.</div></div>
+      <p class="ib80-summary"><i class="fa-solid fa-quote-left"></i> ${esc(reactionSummary(c,k=>loc(cfg("abilities",{})[k],k)))}</p>`;
     }
     if(c.type==="reference")body=`<label>Rules Text ${this._tip("Reference text for mechanics that Item Builder does not automate, such as allowing a two-handed weapon to be wielded in one hand.")}<textarea name="c.${i}.text" rows="5" placeholder="You can wield this two-handed weapon with one hand.">${esc(c.text)}</textarea></label><p class="hint">This is displayed in the item's description and preview but does not apply automation.</p>`;
     if(c.type==="spell")body=`<div class="grid2">
@@ -866,24 +958,38 @@ class ItemBuilder5e extends ApplicationV2 {
       if(c.effect==="movementControl") relevantFields+=`<label>Movement Type<select name="c.${i}.ability">${movementOptions(c.ability||"walk")}</select></label>`;
       if(c.effect==="statusEffect") relevantFields+=`<label>Status / Condition<select name="c.${i}.status">${conditionOptions(c.status)}</select></label><label>Who Gets It ${this._tip("The item user: they have this condition while the item is active. The target: the item's attack, save and damage cards get an Apply Effect button for it.")}<select name="c.${i}.appliesTo">${selectOptions(STATUS_TARGETS,c.appliesTo||"self",false)}</select></label>`;
       if(c.effect==="activeEffect") relevantFields+=`<label>Active Effect Key<input name="c.${i}.activeEffectKey" value="${esc(c.activeEffectKey)}" placeholder="system.attributes.ac.bonus"></label><label>Mode<select name="c.${i}.activeEffectMode"><option value="2" ${c.activeEffectMode==="2"?"selected":""}>Add</option><option value="5" ${c.activeEffectMode==="5"?"selected":""}>Override</option><option value="0" ${c.activeEffectMode==="0"?"selected":""}>Custom</option></select></label><label>Value<input name="c.${i}.activeEffectValue" value="${esc(c.activeEffectValue)}"></label>`;
-      body=`<div class="rule-category ${esc(c.ruleCategory)}"><h3><i class="fa-solid ${category.icon}"></i> ${category.label}</h3><input type="hidden" name="c.${i}.ruleCategory" value="${esc(c.ruleCategory)}">${this._handlingBanner(c,i)}<div class="grid2">
-        <div class="ib311-field-block">
-          <div class="ib311-label">${esc(participants.source)} Creature Type ${this._tip(`The ${participants.source.toLowerCase()} involved in this rule. Leave all unchecked for any creature type.`)}</div>
-          ${creatureChecklist(`c.${i}.sourceType`,c.sourceTypes)}
+      const self=selfSide(c);
+      const showSource=self!=="source"||c.sourceTypes?.length||c.sourceSubtype;
+      const showTarget=self!=="target"||c.targetTypes?.length||c.targetSubtype;
+      const whoNote=self?` The ${self==="source"?participants.source:participants.target} is always the item's user, so only the other creature can be filtered.`:"";
+      const nameTip=c.ruleCategory==="defensive"
+        ?"Only applies when the attacker's attack or ability has this text in its name: “Bite” matches Bite and Poisonous Bite. Leave blank to apply to every attack and ability."
+        :"Only applies when the attack or ability being used has this text in its name: “Bite” matches Bite and Poisonous Bite. Leave blank to apply to every attack and ability.";
+      body=`<div class="rule-category ${esc(c.ruleCategory)}"><h3><i class="fa-solid ${category.icon}"></i> ${category.label}</h3><input type="hidden" name="c.${i}.ruleCategory" value="${esc(c.ruleCategory)}">${this._handlingBanner(c,i)}
+        <div class="grid2">
+          <label>Effect<select name="c.${i}.effect">${effectOptions}</select></label>
+          ${relevantFields}
         </div>
-        <div class="ib311-field-block">
-          <div class="ib311-label">${esc(participants.target)} Creature Type ${this._tip(`The ${participants.target.toLowerCase()} involved in this rule. Leave all unchecked for any creature type. A selected type is a strict requirement.`)}</div>
-          ${creatureChecklist(`c.${i}.targetType`,c.targetTypes)}
-        </div>
-        <label>${esc(participants.source)} Subtype ${this._tip(`Restricts the ${participants.source.toLowerCase()}. Uses subtype metadata first, then custom creature type or actor name when metadata is blank.`)}
-          <select name="c.${i}.sourceSubtype">${creatureSubtypeOptions(c.sourceSubtype)}</select></label>
-        <label>${esc(participants.target)} Subtype ${this._tip(`Restricts the ${participants.target.toLowerCase()}. Uses subtype metadata first, then custom creature type or actor name when metadata is blank.`)}
-          <select name="c.${i}.targetSubtype">${creatureSubtypeOptions(c.targetSubtype)}</select></label>
-        <label>Activity Name Contains ${this._tip("Matches the D&D5e activity name, such as Bite, Claw, or Fire Breath.")}
-          <input name="c.${i}.activityName" value="${esc(c.activityName)}" placeholder="Bite"></label>
-        <label>Effect<select name="c.${i}.effect">${effectOptions}</select></label>
-        ${relevantFields}
-      </div><p class="rule-note">All populated conditions must match. Creature-type filters fail closed when Foundry metadata is blank. Rules with no conditions become a normal Active Effect on the item whenever D&D5e supports it.</p></div>`;
+        <fieldset class="ib80-conditions"><legend>Only when… <span class="muted">(optional)</span></legend>
+          <p class="hint">Leave everything here blank and the effect always applies. Each box you fill in narrows it, and all of them must match.${esc(whoNote)}</p>
+          <div class="grid2">
+            ${showSource?`<div class="ib311-field-block">
+              <div class="ib311-label">${esc(participants.source)} Is ${this._tip(`Leave all unchecked for any creature type.`)}</div>
+              ${creatureChecklist(`c.${i}.sourceType`,c.sourceTypes)}
+            </div>`:""}
+            ${showTarget?`<div class="ib311-field-block">
+              <div class="ib311-label">${esc(participants.target)} Is ${this._tip(`Leave all unchecked for any creature type.`)}</div>
+              ${creatureChecklist(`c.${i}.targetType`,c.targetTypes)}
+            </div>`:""}
+            ${showSource?`<label>${esc(participants.source)} Subtype ${this._tip(`Uses subtype metadata first, then custom creature type or actor name when metadata is blank.`)}
+              <select name="c.${i}.sourceSubtype">${creatureSubtypeOptions(c.sourceSubtype)}</select></label>`:""}
+            ${showTarget?`<label>${esc(participants.target)} Subtype ${this._tip(`Uses subtype metadata first, then custom creature type or actor name when metadata is blank.`)}
+              <select name="c.${i}.targetSubtype">${creatureSubtypeOptions(c.targetSubtype)}</select></label>`:""}
+            <label>${c.ruleCategory==="defensive"?"Attacker's Attack or Ability Named":"Attack or Ability Named"} ${this._tip(nameTip)}
+              <input name="c.${i}.activityName" value="${esc(c.activityName)}" placeholder="Any attack or ability"></label>
+          </div>
+        </fieldset>
+        <p class="ib80-summary" data-summary="${i}"><i class="fa-solid fa-quote-left"></i> ${esc(ruleSentence(c))}</p></div>`;
     }
 
     const badge=c.type==="conditional"?(RULE_CATEGORIES[c.ruleCategory]?.label??"Rule Effect"):c.type;
@@ -907,6 +1013,7 @@ class ItemBuilder5e extends ApplicationV2 {
     if(c.type==="sense")return `${tier}: ${c.mode==="add"?"+":""}${esc(c.value)} ft. ${esc({darkvision:"Darkvision",blindsight:"Blindsight",tremorsense:"Tremorsense",truesight:"Truesight"}[c.sense]??c.sense)}.`;
     if(c.type==="ability")return `${tier}: ${c.mode==="add"?"+":"Set"} ${esc(c.value)} ${esc(loc(cfg("abilities",{})[c.ability],c.ability))}.`;
     if(c.type==="spell"){const s=this.catalog.spells.find(x=>x.uuid===c.spellUuid)??resolveUuidSync(c.spellUuid);return `${tier}: grants ${esc(s?.name??"no spell selected")}.`}
+    if(c.type==="reaction")return `${tier}: ${esc(reactionSummary(c,k=>loc(cfg("abilities",{})[k],k)))}`;
     if(c.type==="skill"){const sk=cfg("skills",{})[c.skill];const training=String(c.proficiency)==="2"?"Expertise":"Proficiency";const abil=c.ability?` using ${loc(cfg("abilities",{})[c.ability],c.ability)}`:"";return `${tier}: ${training} in ${esc(loc(sk,c.skill))}${esc(abil)}.`}
     if(c.type==="halfAsi")return `${tier}: +1 ${c.selectionMode==="fixed"?esc(loc(cfg("abilities",{})[c.ability],c.ability)):c.selectedAbility?esc(loc(cfg("abilities",{})[c.selectedAbility],c.selectedAbility)):"ability score chosen by the player"} (maximum 20).`;
     if(c.type==="reference")return `${tier}: ${esc(c.name)} — ${esc(c.text||"No rules text entered")}`;
@@ -950,6 +1057,7 @@ class ItemBuilder5e extends ApplicationV2 {
     if(c.type==="halfAsi")return `${tier} — ${c.name}: +1 ability score (maximum 20; ${c.selectionMode==="fixed"?loc(cfg("abilities",{})[c.ability],c.ability):"player choice"})`;
     if(c.type==="skill")return `${tier} — ${c.name}: ${String(c.proficiency)==="2"?"expertise":"proficiency"} in ${loc(cfg("skills",{})[c.skill],c.skill)}${c.ability?` using ${loc(cfg("abilities",{})[c.ability],c.ability)}`:""}`;
     if(c.type==="spell"){const spell=this.catalog.spells.find(s=>s.uuid===c.spellUuid)??resolveUuidSync(c.spellUuid);return `${tier} — ${c.name}: grants ${spell?.name??"selected spell"}`;}
+    if(c.type==="reaction")return `${tier} — ${c.name}: ${reactionSummary(c,k=>loc(cfg("abilities",{})[k],k))}`;
     return `${tier} — ${c.name||c.type}`;
   }
 
@@ -1078,7 +1186,7 @@ class ItemBuilder5e extends ApplicationV2 {
     let nativeAsi={ids:{},removed:[]};
     if(data.type==="feat")nativeAsi=applyNativeAsi(data,b.components,Object.keys(cfg("abilities",{})),()=>foundry.utils.randomID());
     data.flags[MODULE_ID]={
-      schemaVersion:11,nativeAsiIds:nativeAsi.ids,nativePatches:data.flags?.[MODULE_ID]?.nativePatches??"",currentTier:b.currentTier,tiers:foundry.utils.deepClone(b.tiers),
+      schemaVersion:11,nativeAsiIds:nativeAsi.ids,nativePatches:data.flags?.[MODULE_ID]?.nativePatches??"",reactions:data.flags?.[MODULE_ID]?.reactions??"",currentTier:b.currentTier,tiers:foundry.utils.deepClone(b.tiers),
       components:foundry.utils.deepClone(b.components),
       rules:b.components.filter(c=>c.type==="conditional").map(c=>this._rule(c)),
       category:b.category,baseUuid:b.baseUuid,enhancementBonus:Number(b.enhancementBonus)||0,
@@ -1124,11 +1232,13 @@ class ItemBuilder5e extends ApplicationV2 {
         }
 
         await syncRuleEffects(item);
+        await syncReactions(item);
         ui.notifications.info(`Item Builder: Updated "${item.name}".`);
       }else{
         item=await Item.create(data,{renderSheet:false});
         for(const c of b.components.filter(c=>c.type==="spell"&&Number(c.tier)<=b.currentTier))await this._createSpellActivity(item,c);
         await syncRuleEffects(item);
+        await syncReactions(item);
         ui.notifications.info(`Item Builder: Created "${item.name}".`);
       }
       item.sheet?.render({force:true});
@@ -1180,6 +1290,7 @@ async function setTier(item,newTier){
     try{await createSpellActivity(item,c)}catch(err){console.warn(`${MODULE_ID} | tier spell unlock failed`,err)}
   }
   await syncRuleEffects(item);
+  await syncReactions(item);
   ui.notifications.info(`${item.name}: now ${tiers[newTier-1]?.name??`Tier ${newTier}`}.`);
   item.sheet?.render({force:true});
 }

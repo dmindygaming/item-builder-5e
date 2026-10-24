@@ -19,6 +19,7 @@ import {
 } from "./compat.mjs";
 import { syncRuleEffects } from "./rules.mjs";
 import { upgradeHalfAsi } from "./asi.mjs";
+import { syncReactions } from "./reactions.mjs";
 
 const { ApplicationV2, DialogV2 } = foundry.applications.api;
 
@@ -302,6 +303,7 @@ async function upgradeImportedRules(item) {
     if ( !item?.flags?.[MODULE_ID] ) return;
     if ( (item.getFlag(MODULE_ID, "components") ?? []).some(c => c.type === "conditional") ) await syncRuleEffects(item);
     if ( (Number(item.getFlag(MODULE_ID, "schemaVersion")) || 0) < 10 ) await upgradeHalfAsi(item);
+    if ( (item.getFlag(MODULE_ID, "components") ?? []).some(c => c.type === "reaction") ) await syncReactions(item);
     const html = item.system?.description?.value ?? "";
     const clean = stripBuilderDescription(html);
     await item.update({ [`flags.${MODULE_ID}.schemaVersion`]: 11, ...(clean !== html ? { "system.description.value": clean } : {}) });
