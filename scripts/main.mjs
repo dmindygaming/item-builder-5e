@@ -1,6 +1,6 @@
 import {
   MODULE_ID, effectChangesUpdate, halfAsiChange, movementKey, normalizeAttunement,
-  USES_MODES, readEffectChanges, readRarity, stripBuilderDescription, usesFormula, usesLabel, usesSetting, remapChangeKey, resolveUuid, resolveUuidSync, senseKey, statusEffectList,
+  USES_MODES, magicalPropertyUpdate, readEffectChanges, readRarity, stripBuilderDescription, usesFormula, usesLabel, usesSetting, remapChangeKey, resolveUuid, resolveUuidSync, senseKey, statusEffectList,
   withEffectChanges, writeRarity
 } from "./compat.mjs";
 import { ItemExportApp, ItemImportApp, exportItemsToFile } from "./portability.mjs";
@@ -11,10 +11,10 @@ import { REACTION_EFFECTS, REACTION_TRIGGERS, reactionSummary, syncReactions } f
 import {
   DAMAGE_RULES, DEFENSIVE_TRIGGERS, FORMULA_RULES, OFFENSIVE_DAMAGE_RULES, ROLL_TARGETS, RULE_CATEGORIES,
   STATUS_TARGETS, handlingLabel, hasAutomationEffect, participantLabels, triggerOptions, match, registerRuleHooks, ruleDiagnostic,
-  itemHasOwnUse, ruleFromComponent, ruleHandling, syncRuleEffects
+  itemHasOwnUse, ruleFromComponent, sizeAfter, ruleHandling, syncRuleEffects
 } from "./rules.mjs";
 
-const MODULE_VERSION = "0.10.0";
+const MODULE_VERSION = "0.10.1";
 const { ApplicationV2, DialogV2 } = foundry.applications.api;
 
 const esc = v => foundry.utils.escapeHTML(String(v ?? ""));
@@ -146,6 +146,14 @@ function usesFields(c,i,{recovery}={}){
     ${u.mode!=="unlimited"&&recovery?`<label>Recovery<select name="c.${i}.recovery">${selectOptions(recovery,c.recovery&&c.recovery in recovery?c.recovery:"lr",false)}</select></label>`:""}`;
 }
 
+/** Mark item source data as Magical. D&D5e clears attunement on items without this property. */
+function addMagicalProperty(system){
+  if(Array.isArray(system.properties)){ if(!system.properties.includes("mgc"))system.properties.push("mgc"); }
+  else if(system.properties instanceof Set) system.properties.add("mgc");
+  else if(system.properties&&typeof system.properties==="object") system.properties.mgc=true;
+  else system.properties=["mgc"];
+}
+
 function creatureMulti(selected=[]) {
   return Object.entries(cfg("creatureTypes",{})).map(([k,v]) =>
     `<option value="${esc(k)}" ${selected.includes(k)?"selected":""}>${esc(loc(v,k))}</option>`
@@ -262,7 +270,8 @@ class ItemBuilder5e extends ApplicationV2 {
       ? String(item.system.description.value).replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]+>/g, "")
       : "");
     this.builderData.rarity = readRarity(item.system);
-    this.builderData.attunement = normalizeAttunement(item.system?.attunement, item.system?.attuned).attunement;
+    // Read the stored value: D&D5e blanks the prepared one on items not marked Magical.
+    this.builderData.attunement = normalizeAttunement(item._source?.system?.attunement ?? item.system?.attunement, item._source?.system?.attuned ?? item.system?.attuned).attunement;
     this.builderData.value = String(item.system?.price?.value ?? item.system?.price ?? 0);
     this.builderData.currency = String(item.system?.price?.denomination ?? "gp");
     this.builderData.levelRequirement = String(item.system?.prerequisites?.level ?? "");
@@ -982,7 +991,12 @@ class ItemBuilder5e extends ApplicationV2 {
         relevantFields+=`<label>How ${this._tip("Grow/shrink is relative to the creature's normal size (Enlarge makes a Medium creature Large and a Small creature Medium). Set makes the creature exactly that size.")}<select name="c.${i}.sizeMode">${selectOptions({grow:"Grow by size categories",shrink:"Shrink by size categories",set:"Become a set size"},mode,false)}</select></label>`;
         relevantFields+=mode==="set"
           ?`<label>Size<select name="c.${i}.size">${selectOptions(sizes,c.size||"lg",false)}</select></label>`
-          :`<label>Categories<select name="c.${i}.sizeSteps">${selectOptions({"1":"1 size","2":"2 sizes","3":"3 sizes"},String(Math.abs(Number(c.sizeSteps)||1)),false)}</select></label>`;
+          :`<label>Amount<select name="c.${i}.sizeSteps">${selectOptions(Object.fromEntries([1,2,3].map(n=>{
+              const name=k=>loc(cfg("actorSizes",{})[k],k);
+              const dir=mode==="shrink"?-1:1;
+              const ex=["sm","med","lg"].map(k=>`${name(k)} → ${name(sizeAfter(k,dir*n))}`).filter(t=>!/(\S+) → \1$/.test(t)).slice(0,2).join(", ");
+              return [String(n),`${["One","Two","Three"][n-1]} size${n>1?"s":""} ${mode==="shrink"?"smaller":"larger"} (${ex})`];
+            })),String(Math.abs(Number(c.sizeSteps)||1)),false)}</select></label>`;
       }
       if(c.effect==="movementControl") relevantFields+=`<label>Movement Type<select name="c.${i}.ability">${movementOptions(c.ability||"walk")}</select></label>`;
       if(c.effect==="statusEffect") relevantFields+=`<label>Status / Condition<select name="c.${i}.status">${conditionOptions(c.status)}</select></label><label>Who Gets It ${this._tip("The item user: they have this condition while the item is active. The target: the item's attack, save and damage cards get an Apply Effect button for it.")}<select name="c.${i}.appliesTo">${selectOptions(STATUS_TARGETS,c.appliesTo||"self",false)}</select></label>`;
@@ -1187,6 +1201,8 @@ class ItemBuilder5e extends ApplicationV2 {
       const att=normalizeAttunement(b.attunement,data.system.attuned);
       data.system.attunement=att.attunement;
       if(!att.attunement)data.system.attuned=false;
+      // D&D5e ignores attunement (and rarity-based magic) on items that are not marked Magical.
+      if(att.attunement||b.rarity)addMagicalProperty(data.system);
       data.system.price={value:Math.max(0,Number(b.value)||0),denomination:b.currency||"gp"};
     }
 
@@ -1194,17 +1210,7 @@ class ItemBuilder5e extends ApplicationV2 {
 
     const enhancement = Number(b.enhancementBonus) || 0;
     if (["weapon","armor"].includes(b.category)) {
-      if (enhancement > 0) {
-        if (Array.isArray(data.system.properties)) {
-          if (!data.system.properties.includes("mgc")) data.system.properties.push("mgc");
-        } else if (data.system.properties instanceof Set) {
-          data.system.properties.add("mgc");
-        } else if (data.system.properties && typeof data.system.properties === "object") {
-          data.system.properties.mgc = true;
-        } else {
-          data.system.properties = ["mgc"];
-        }
-      }
+      if (enhancement > 0) addMagicalProperty(data.system);
 
       if (b.category === "weapon") {
         data.system.magicalBonus = enhancement;
@@ -1218,7 +1224,7 @@ class ItemBuilder5e extends ApplicationV2 {
     let nativeAsi={ids:{},removed:[]};
     if(data.type==="feat")nativeAsi=applyNativeAsi(data,b.components,Object.keys(cfg("abilities",{})),()=>foundry.utils.randomID());
     data.flags[MODULE_ID]={
-      schemaVersion:11,nativeAsiIds:nativeAsi.ids,nativePatches:data.flags?.[MODULE_ID]?.nativePatches??"",reactions:data.flags?.[MODULE_ID]?.reactions??"",progressionNotes:b.progressionNotes||"",currentTier:b.currentTier,tiers:foundry.utils.deepClone(b.tiers),
+      schemaVersion:12,nativeAsiIds:nativeAsi.ids,nativePatches:data.flags?.[MODULE_ID]?.nativePatches??"",reactions:data.flags?.[MODULE_ID]?.reactions??"",progressionNotes:b.progressionNotes||"",currentTier:b.currentTier,tiers:foundry.utils.deepClone(b.tiers),
       components:foundry.utils.deepClone(b.components),
       rules:b.components.filter(c=>c.type==="conditional").map(c=>this._rule(c)),
       category:b.category,baseUuid:b.baseUuid,enhancementBonus:Number(b.enhancementBonus)||0,
@@ -1405,6 +1411,14 @@ async function migrateManagedEffects(){
           }
           await item.update(update);
         }catch(err){console.warn(`${MODULE_ID} | could not rebuild rules on ${item.name}`,err)}
+      }
+      // 0.10.1: items that require attunement must be Magical, or D&D5e drops the attunement.
+      if((Number(item.getFlag(MODULE_ID,"schemaVersion"))||0)<12){
+        try{
+          const update={[`flags.${MODULE_ID}.schemaVersion`]:12,...(magicalPropertyUpdate(item)??{})};
+          await item.update(update);
+          if(update["system.properties"])rebuilt++;
+        }catch(err){console.warn(`${MODULE_ID} | could not mark ${item.name} magical`,err)}
       }
       for(const effect of item.effects){
         if(!effect.getFlag(MODULE_ID,"managed"))continue;

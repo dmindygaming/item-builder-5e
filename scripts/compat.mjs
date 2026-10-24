@@ -393,3 +393,16 @@ export function usesLabel(c, abilityLabel=k => k) {
   if ( mode === "profAbility" ) return `proficiency bonus + ${abilityLabel(ability)} modifier`;
   return "";
 }
+
+/**
+ * Update that marks an item Magical when it requires attunement but lacks the property
+ * (D&D5e drops attunement from non-magical items), or null when nothing is needed.
+ */
+export function magicalPropertyUpdate(item) {
+  const src = item?._source?.system ?? {};
+  if ( !src.attunement || !item?.system?.validProperties?.has?.("mgc") ) return null;
+  const props = src.properties ?? [];
+  const list = Array.isArray(props) ? props : (props instanceof Set) ? [...props] : Object.keys(props ?? {}).filter(k => props[k]);
+  if ( list.includes("mgc") ) return null;
+  return { "system.properties": [...list, "mgc"] };
+}
