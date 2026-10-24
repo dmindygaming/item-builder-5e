@@ -2,6 +2,27 @@
 
 All notable changes to Item Builder 5e.
 
+## v0.9.0 Reactions, and clearer rule cards
+
+### Reactions
+A new **Reaction** component adds something the item's user can do with their reaction. Each reaction is written into the item as a D&D5e activity with Reaction activation, so it shows on the character sheet and works with or without Item Builder or Midi-QOL.
+
+- **Trigger:** pick a common one (hit by an attack, targeted, taking damage, making a save, an ally being attacked, a creature leaving your reach) or type your own. It shows as the activity's trigger.
+- **What happens:**
+  - Bonus to AC, resistance, or a saving throw bonus until the start of your next turn (applied as an effect when used).
+  - Reduce the triggering damage: a fixed amount such as 5 or @prof is applied automatically; a rolled amount is rolled on the card.
+  - Deal damage to the attacker, or have the attacker make a saving throw.
+  - Regain hit points or gain temporary hit points.
+  - Something else, as rules text.
+- Optional limited uses with short rest, long rest, dawn or day recovery.
+- Reactions follow tiers: they appear when their tier is reached and are removed if the tier drops. Spent uses are kept when the item is edited.
+
+### Clearer rule cards
+- **Effect first.** The effect and its settings are at the top. The creature and name filters are grouped under **Only when… (optional)**, which explains that leaving them blank makes the effect always apply.
+- **"Activity Name Contains"** is now **"Attacker's Attack or Ability Named"** on defensive effects (and "Attack or Ability Named" elsewhere), with "Any attack or ability" shown when blank.
+- Filters for the side that is always the item's user (for example "Defender / Item User" on a defensive effect) are hidden, since only the other creature can usefully be filtered. Rules that already use them still show them.
+- Every rule card ends with a plain-English sentence of what it does, updated as you edit, e.g. "Resistance to poison damage when you are struck by an attack, only when the attack or ability is named “Bite”."
+
 ## v0.8.1 Clean item descriptions
 
 - Item descriptions, and the chat cards made from them, now contain only the description you write. Item Builder no longer adds an "Item Builder Features" list. The builder's preview still shows what each feature does.
