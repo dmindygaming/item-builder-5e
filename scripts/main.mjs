@@ -6,6 +6,7 @@ import {
 import { ItemExportApp, ItemImportApp, exportItemsToFile } from "./portability.mjs";
 import { applyNativeAsi, halfAsiHandled, halfAsiIsNative, upgradeHalfAsi } from "./asi.mjs";
 import { enhanceSearchableSelects } from "./combo.mjs";
+import { registerTokenSizeHooks } from "./tokensize.mjs";
 import { REACTION_EFFECTS, REACTION_TRIGGERS, reactionSummary, syncReactions } from "./reactions.mjs";
 import {
   DAMAGE_RULES, DEFENSIVE_TRIGGERS, FORMULA_RULES, OFFENSIVE_DAMAGE_RULES, ROLL_TARGETS, RULE_CATEGORIES,
@@ -13,7 +14,7 @@ import {
   itemHasOwnUse, ruleFromComponent, ruleHandling, syncRuleEffects
 } from "./rules.mjs";
 
-const MODULE_VERSION = "0.9.3";
+const MODULE_VERSION = "0.10.0";
 const { ApplicationV2, DialogV2 } = foundry.applications.api;
 
 const esc = v => foundry.utils.escapeHTML(String(v ?? ""));
@@ -107,6 +108,7 @@ function ruleSentence(c){
     healingReceived:`Healing you receive changes by ${f}`,
     temporaryHp:`Grants ${f} temporary hit points`,
     recoveryBonus:`+${f} per Hit Die spent`,
+    sizeChange:c.sizeMode==="set"?`Becomes ${loc(cfg("actorSizes",{})[c.size||"lg"],c.size||"lg")} size, with tokens resized to match`:`${Number(c.sizeSteps)<0||c.sizeMode==="shrink"?"Shrinks":"Grows"} ${Math.abs(Number(c.sizeSteps)||1)} size${Math.abs(Number(c.sizeSteps)||1)===1?"":"s"}, with tokens resized to match`,
     movementControl:`${f} ft. ${loc(cfg("movementTypes",{})[c.ability||"walk"],c.ability||"walk").toLowerCase()} speed`,
     advantage:`Advantage on ${(ROLL_TARGETS[c.rollTarget||"attack"]??"rolls").toLowerCase()}`,
     disadvantage:`Disadvantage on ${(ROLL_TARGETS[c.rollTarget||"attack"]??"rolls").toLowerCase()}`
@@ -598,7 +600,7 @@ class ItemBuilder5e extends ApplicationV2 {
       this.render({force:true});
     }));
     el.querySelectorAll('select[name$=".rollTarget"],select[name$=".appliesTo"]').forEach(sel=>sel.addEventListener("change",()=>{this._capture();this.render({force:true});}));
-    el.querySelectorAll('select[name$=".reactionEffect"],select[name$=".trigger"],select[name$=".usesMode"]').forEach(sel=>sel.addEventListener("change",()=>{this._capture();this.render({force:true});}));
+    el.querySelectorAll('select[name$=".reactionEffect"],select[name$=".trigger"],select[name$=".usesMode"],select[name$=".sizeMode"]').forEach(sel=>sel.addEventListener("change",()=>{this._capture();this.render({force:true});}));
     el.querySelectorAll('select[name$=".selectionMode"]').forEach(sel=>sel.addEventListener("change",()=>{this._capture();this.render({force:true});}));
 
     el.querySelectorAll("[data-add-component]").forEach(btn=>btn.addEventListener("click",e=>{
@@ -708,6 +710,10 @@ class ItemBuilder5e extends ApplicationV2 {
         c.ruleCategory=v(`c.${i}.ruleCategory`)??c.ruleCategory;
         c.ability=v(`c.${i}.ability`)??c.ability;
         c.status=v(`c.${i}.status`)??c.status;
+        c.sizeMode=v(`c.${i}.sizeMode`)??c.sizeMode;
+        c.size=v(`c.${i}.size`)??c.size;
+        {const steps=v(`c.${i}.sizeSteps`);if(steps!==undefined)c.sizeSteps=String((c.sizeMode==="shrink"?-1:1)*Math.abs(Number(steps)||1));
+         else if(c.sizeSteps!==undefined)c.sizeSteps=String((c.sizeMode==="shrink"?-1:1)*Math.abs(Number(c.sizeSteps)||1));}
         c.activeEffectKey=v(`c.${i}.activeEffectKey`)??c.activeEffectKey;
         c.activeEffectMode=v(`c.${i}.activeEffectMode`)??c.activeEffectMode;
         c.activeEffectValue=v(`c.${i}.activeEffectValue`)??c.activeEffectValue;
@@ -969,6 +975,14 @@ class ItemBuilder5e extends ApplicationV2 {
         relevantFields+=`<label>Applies To Roll ${this._tip("Which rolls get advantage or disadvantage. Attack rolls follow this item's attacks; the others apply to the item user.")}<select name="c.${i}.rollTarget">${selectOptions(ROLL_TARGETS,rt,false)}</select></label>`;
         if(["save","check"].includes(rt))relevantFields+=`<label>Ability<select name="c.${i}.ability"><option value="">Any Ability</option>${abilityOptions(c.ability,true).replace('<option value="">—</option>','')}</select></label>`;
         if(rt==="skill")relevantFields+=`<label>Skill<select name="c.${i}.skill"><option value="">Any Skill</option>${selectOptions(cfg("skills",{}),c.skill,false)}</select></label>`;
+      }
+      if(c.effect==="sizeChange"){
+        const sizes=Object.fromEntries(Object.entries(cfg("actorSizes",{})).filter(([,v])=>typeof v==="object").map(([k,v])=>[k,loc(v,k)]));
+        const mode=c.sizeMode||"grow";
+        relevantFields+=`<label>How ${this._tip("Grow/shrink is relative to the creature's normal size (Enlarge makes a Medium creature Large and a Small creature Medium). Set makes the creature exactly that size.")}<select name="c.${i}.sizeMode">${selectOptions({grow:"Grow by size categories",shrink:"Shrink by size categories",set:"Become a set size"},mode,false)}</select></label>`;
+        relevantFields+=mode==="set"
+          ?`<label>Size<select name="c.${i}.size">${selectOptions(sizes,c.size||"lg",false)}</select></label>`
+          :`<label>Categories<select name="c.${i}.sizeSteps">${selectOptions({"1":"1 size","2":"2 sizes","3":"3 sizes"},String(Math.abs(Number(c.sizeSteps)||1)),false)}</select></label>`;
       }
       if(c.effect==="movementControl") relevantFields+=`<label>Movement Type<select name="c.${i}.ability">${movementOptions(c.ability||"walk")}</select></label>`;
       if(c.effect==="statusEffect") relevantFields+=`<label>Status / Condition<select name="c.${i}.status">${conditionOptions(c.status)}</select></label><label>Who Gets It ${this._tip("The item user: they have this condition while the item is active. The target: the item's attack, save and damage cards get an Apply Effect button for it.")}<select name="c.${i}.appliesTo">${selectOptions(STATUS_TARGETS,c.appliesTo||"self",false)}</select></label>`;
@@ -1325,6 +1339,7 @@ function openBuilder(){
 
 Hooks.once("init",()=>{
   registerRuleHooks();
+  registerTokenSizeHooks();
   // Retained as a hidden legacy setting so existing worlds do not lose stored configuration.
   // Extra damage now travels through D&D5e's native damage card and application controls.
   game.settings.register(MODULE_ID,"autoExtra",{name:"Legacy automatic conditional extra damage",scope:"world",config:false,type:Boolean,default:true,restricted:true});

@@ -27,7 +27,7 @@ export const RULE_CATEGORIES = {
   offensive: { label: "Offensive Effect", icon: "fa-burst", effects: { extraDamage: "Extra Damage", sameTypeDamage: "Additional Same-Type Damage", attackBonus: "Attack Bonus", attackAdvantage: "Attack Advantage", reachBonus: "Increase Reach", ignoreHalfCover: "Ignore Half Cover", ignoreThreeQuartersCover: "Ignore Three-Quarters Cover", ignoreAllCover: "Ignore All Cover", ignoreResistance: "Ignore Damage Resistance", ignoreImmunity: "Ignore Damage Immunity", ignoreResistanceImmunity: "Ignore Resistance & Immunity", causeVulnerability: "Cause Damage Vulnerability" } },
   defensive: { label: "Defensive Effect", icon: "fa-shield-halved", effects: { resistance: "Resistance", immunity: "Immunity", vulnerability: "Vulnerability", acBonus: "AC Bonus", saveBonus: "Saving Throw Bonus", saveAdvantage: "Saving Throw Advantage" } },
   healing: { label: "Healing / Recovery Effect", icon: "fa-heart-pulse", effects: { bonusHealing: "Bonus Healing", healingReceived: "Healing Received Modifier", temporaryHp: "Temporary HP", recoveryBonus: "Recovery Roll Bonus" } },
-  utility: { label: "Utility / Control Effect", icon: "fa-wand-magic-sparkles", effects: { movementControl: "Movement / Control", statusEffect: "Status / Condition", advantage: "Advantage", disadvantage: "Disadvantage", activeEffect: "Apply Active Effect" } }
+  utility: { label: "Utility / Control Effect", icon: "fa-wand-magic-sparkles", effects: { movementControl: "Movement / Control", sizeChange: "Change Size", statusEffect: "Status / Condition", advantage: "Advantage", disadvantage: "Disadvantage", activeEffect: "Apply Active Effect" } }
 };
 export const FORMULA_RULES = new Set(["extraDamage", "sameTypeDamage", "attackBonus", "reachBonus", "acBonus", "saveBonus", "bonusHealing", "healingReceived", "temporaryHp", "recoveryBonus", "movementControl"]);
 export const DAMAGE_RULES = new Set(["extraDamage", "sameTypeDamage", "resistance", "immunity", "vulnerability", "ignoreResistance", "ignoreImmunity", "ignoreResistanceImmunity", "causeVulnerability"]);
@@ -37,6 +37,19 @@ export const COVER_RULES = { ignoreHalfCover: "half", ignoreThreeQuartersCover: 
 export const DEFENSIVE_TRIGGERS = { damage: "When You Take Damage", struck: "When You Are Struck by an Attack", melee: "When Struck by a Melee Attack", ranged: "When Struck by a Ranged Attack", spell: "When Damaged by a Spell Attack", save: "When Damaged after a Saving Throw", saveAgainstSpell: "When Making a Save Against a Spell", saveAgainstMagic: "When Making a Save Against a Spell or Magical Effect" };
 /** Save triggers that restrict which saves a rule applies to. */
 export const SAVE_SOURCE_TRIGGERS = new Set(["saveAgainstSpell", "saveAgainstMagic"]);
+/** Creature sizes, smallest first. */
+export function sizeKeys() {
+  const sizes = globalThis.CONFIG?.DND5E?.actorSizes ?? {};
+  const keys = Object.keys(sizes).filter(k => typeof sizes[k] === "object");
+  if ( !keys.length ) return ["tiny", "sm", "med", "lg", "huge", "grg"];
+  return keys.sort((a, b) => (sizes[a].numerical ?? keys.indexOf(a)) - (sizes[b].numerical ?? keys.indexOf(b)));
+}
+/** The size `steps` larger (or smaller, when negative) than `base`, clamped to Tiny..Gargantuan. */
+export function sizeAfter(base, steps) {
+  const keys = sizeKeys();
+  const i = Math.max(0, keys.indexOf(base || "med"));
+  return keys[Math.min(keys.length - 1, Math.max(0, i + (Number(steps) || 0)))];
+}
 export const ROLL_TARGETS = { attack: "Attack Rolls", save: "Saving Throws", check: "Ability Checks", skill: "Skill Checks", initiative: "Initiative", concentration: "Concentration Saves" };
 export const STATUS_TARGETS = { self: "The item user, while the item is active", target: "The target (apply from the chat card)" };
 export const RULE_PARTICIPANT_LABELS = {
@@ -153,6 +166,10 @@ export function ruleHandling(c, itemType="", { ownUse=defaultOwnUse(itemType) }=
       return { mode: "runtime", note: "Applied automatically by Item Builder when the item user's healing is applied (dnd5e has no built-in way to add temporary HP to healing)." };
     case "recoveryBonus":
       return { mode: "runtime", note: "Applied automatically by Item Builder to each Hit Die rolled (dnd5e has no built-in Hit Die bonus)." };
+    case "sizeChange":
+      return { mode: "native", note: c.sizeMode === "set"
+        ? "Built in: the item user's size is set while the item is active. Tokens on the map are resized by Item Builder."
+        : "Built in: the item user grows (or shrinks) while the item is active. Tokens on the map are resized by Item Builder.", ignoresConditions: conditional };
     case "movementControl":
       return { mode: "native", note: "Built in as a change to the item user's speed (use a negative number to reduce it).", ignoresConditions: conditional };
     case "statusEffect":
@@ -253,7 +270,7 @@ const ATTACK_TYPES = ["mwak", "rwak", "msak", "rsak"];
  * Canonical actor-level Active Effect changes for a natively handled rule, or null.
  * Rules built into the item's own activities (own-use items) are handled by activity patches.
  */
-export function nativeChanges(c, itemType="", { ownUse=defaultOwnUse(itemType), itemName="" }={}) {
+export function nativeChanges(c, itemType="", { ownUse=defaultOwnUse(itemType), itemName="", baseSize="med" }={}) {
   if ( ruleHandling(c, itemType, { ownUse }).mode !== "native" ) return null;
   const formula = String(c.formula ?? "").trim();
   const d6 = isDnd5e6();
@@ -296,6 +313,14 @@ export function nativeChanges(c, itemType="", { ownUse=defaultOwnUse(itemType), 
         return [{ key: "attack", type: "dnd5e.advantage", value, priority: 20, ...(ruleOnThisItem ? { conditions: ruleOnThisItem } : {}) }];
       }
       return rollModeKeys(c.rollTarget, { ability: c.ability, skill: c.skill }).map(key => ({ key, type: "add", value, priority: 20 }));
+    }
+    case "sizeChange": {
+      if ( c.sizeMode === "set" ) return c.size ? [{ key: "system.traits.size", type: "override", value: c.size, priority: 30 }] : [];
+      const steps = Number(c.sizeSteps ?? 1) || 0;
+      if ( !steps ) return [];
+      // dnd5e 6 steps sizes natively ("add 1" = one size larger); 5.3 needs the resulting size.
+      return d6 ? [{ key: "system.traits.size", type: "add", value: String(steps), priority: 30 }]
+        : [{ key: "system.traits.size", type: "override", value: sizeAfter(baseSize, steps), priority: 30 }];
     }
     case "movementControl":
       return formula ? [{ key: movementKey(c.ability || "walk"), type: "add", value: formula, priority: 20 }] : [];
@@ -341,7 +366,7 @@ function statusInfo(id) {
  * @param {string} context.itemType
  * @param {number} context.activeTier
  */
-export function ruleEffectData(c, { itemName, itemType, activeTier, ownUse=defaultOwnUse(itemType) }) {
+export function ruleEffectData(c, { itemName, itemType, activeTier, ownUse=defaultOwnUse(itemType), baseSize="med" }) {
   if ( c.type !== "conditional" ) return null;
   if ( ruleHandling(c, itemType, { ownUse }).mode !== "native" ) return null;
   const minTier = Number(c.tier) || 1;
@@ -357,7 +382,7 @@ export function ruleEffectData(c, { itemName, itemType, activeTier, ownUse=defau
     return withEffectChanges({ name: `${itemName}: ${c.name || info.name}`, img: info.img, transfer: true, disabled: minTier > activeTier, statuses: [c.status], flags }, []);
   }
 
-  const changes = nativeChanges(c, itemType, { ownUse, itemName });
+  const changes = nativeChanges(c, itemType, { ownUse, itemName, baseSize });
   if ( !changes?.length ) return null;
   return withEffectChanges({
     name: `${itemName}: ${c.name || RULE_CATEGORIES[c.ruleCategory]?.effects?.[c.effect] || c.effect}`,
@@ -507,7 +532,8 @@ export async function syncRuleEffects(item) {
   const oldSet = new Set(old);
   if ( old.length ) await item.deleteEmbeddedDocuments("ActiveEffect", old);
   const data = comps.flatMap(c => [
-    ruleEffectData(c, { itemName: item.name, itemType: item.type, activeTier: tier, ownUse }),
+    ruleEffectData(c, { itemName: item.name, itemType: item.type, activeTier: tier, ownUse,
+      baseSize: item.parent?._source?.system?.traits?.size || "med" }),
     automationEffectData(c, { itemName: item.name, itemType: item.type, activeTier: tier, ownUse })
   ]).filter(Boolean);
   const created = data.length ? await item.createEmbeddedDocuments("ActiveEffect", data) : [];
