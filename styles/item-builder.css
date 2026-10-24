@@ -228,12 +228,27 @@
 .item-builder-5e .ib33-root .ib90-buttons button > span { overflow: hidden; text-overflow: ellipsis; }
 @media (max-width: 900px) { .item-builder-5e .ib33-root .ib90-group { grid-template-columns: 1fr; gap: .3rem; } }
 
-/* v0.9.2 search boxes for long lists */
-.item-builder-5e .ib33-root .ib91-search { position: relative; display: flex; align-items: center; margin-top: .25rem; }
-.item-builder-5e .ib33-root .ib91-search > i { position: absolute; left: .55rem; opacity: .55; font-size: .85em; pointer-events: none; }
-.item-builder-5e .ib33-root .body .ib91-search input[type=search] { margin: 0; padding-left: 1.9rem; padding-right: 5.5rem; }
-.item-builder-5e .ib33-root .ib91-search small { position: absolute; right: .55rem; font-weight: 400; opacity: .65; pointer-events: none; }
-.item-builder-5e .ib33-root .ib91-search + select { margin-top: .3rem !important; }
+/* v0.9.3 searchable dropdowns (search field inside the open list) */
+.item-builder-5e .ib33-root select[data-combo-ready] { display: none !important; }
+.item-builder-5e .ib33-root .ib92-combo { position: relative; margin-top: .25rem; font-weight: 400; }
+.item-builder-5e .ib33-root .ib92-combo-trigger { display: flex; align-items: center; justify-content: space-between; gap: .5rem; width: 100%; height: 2.15rem; margin: 0; padding: 0 .55rem; text-align: left; font-weight: 600; background: var(--input-background-color, rgba(0,0,0,.08)); border: 1px solid var(--color-border-light-tertiary, #777); border-radius: 3px; }
+.item-builder-5e .ib33-root .ib92-combo-trigger > i { font-size: .75em; opacity: .6; transition: transform .15s; }
+.item-builder-5e .ib33-root .ib92-combo.open .ib92-combo-trigger > i { transform: rotate(180deg); }
+.item-builder-5e .ib33-root .ib92-combo-value { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.item-builder-5e .ib33-root .ib92-combo-value.placeholder { opacity: .65; font-weight: 400; }
+.ib92-combo-panel { position: fixed; z-index: 10000; display: flex; flex-direction: column; max-height: 20rem; background: #ece6da; color: #1a1a1a; border: 1px solid #7779; border-radius: 4px; box-shadow: 0 6px 18px #0006; font-family: var(--font-primary, inherit); font-size: var(--font-size-14, 14px); }
+.ib92-combo-panel[hidden] { display: none !important; }
+.ib92-combo-search { position: relative; display: flex; align-items: center; padding: .4rem; border-bottom: 1px solid #7775; }
+.ib92-combo-search > i { position: absolute; left: .95rem; opacity: .55; font-size: .85em; pointer-events: none; }
+.ib92-combo-search input { display: block; width: 100%; height: 1.9rem; margin: 0; padding: 0 .5rem 0 1.85rem; color: inherit; background: #fff8; border: 1px solid #7777; border-radius: 3px; }
+.ib92-combo-list { flex: 1; margin: 0; padding: .2rem 0; overflow-y: auto; list-style: none; }
+.ib92-combo-list li { padding: .3rem .7rem; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ib92-combo-list li[hidden] { display: none; }
+.ib92-combo-list li.placeholder { opacity: .6; font-style: italic; }
+.ib92-combo-list li.active { background: #5482be33; }
+.ib92-combo-list li.selected { font-weight: 700; }
+.ib92-combo-empty { padding: .5rem .7rem; opacity: .65; font-style: italic; }
+.ib92-combo-empty[hidden] { display: none; }
 
 /* v0.9.2 GM-only progression notes */
 .item-builder-5e .ib33-root .ib91-tier { display: grid; gap: .3rem; padding: .45rem .55rem; border: 1px solid #7774; border-radius: 6px; }
