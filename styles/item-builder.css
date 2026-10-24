@@ -216,3 +216,14 @@
 .item-builder-5e .ib33-root .ib80-conditions .hint { margin: .1rem 0 .5rem; font-size: .85em; opacity: .75; }
 .item-builder-5e .ib33-root .ib80-summary { margin: .75rem 0 0; padding: .5rem .7rem; border-radius: 6px; background: #7772; font-style: italic; line-height: 1.35; }
 .item-builder-5e .ib33-root .ib80-summary > i { opacity: .5; margin-right: .3rem; font-size: .8em; }
+
+/* v0.9.1 grouped "add component" toolbar */
+.item-builder-5e .ib33-root .ib90-add { display: grid; gap: .55rem; margin: .2rem 0 1rem; padding: .65rem .75rem; border: 1px solid #7775; border-radius: 8px; background: #7771; }
+.item-builder-5e .ib33-root .ib90-group { display: grid; grid-template-columns: 8.5rem minmax(0, 1fr); align-items: center; gap: .6rem; }
+.item-builder-5e .ib33-root .ib90-group + .ib90-group { padding-top: .55rem; border-top: 1px solid #7773; }
+.item-builder-5e .ib33-root .ib90-group h4 { margin: 0; font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; opacity: .7; border: 0; }
+.item-builder-5e .ib33-root .ib90-buttons { display: grid; grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr)); gap: .35rem; }
+.item-builder-5e .ib33-root .ib90-buttons button { display: flex; align-items: center; justify-content: flex-start; gap: .45rem; width: 100%; min-height: 2rem; margin: 0; padding: .3rem .6rem; white-space: nowrap; }
+.item-builder-5e .ib33-root .ib90-buttons button > i { width: 1rem; text-align: center; opacity: .8; }
+.item-builder-5e .ib33-root .ib90-buttons button > span { overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 900px) { .item-builder-5e .ib33-root .ib90-group { grid-template-columns: 1fr; gap: .3rem; } }
