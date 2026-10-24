@@ -2,6 +2,11 @@
 
 All notable changes to Item Builder 5e.
 
+## v0.9.3 Search inside the dropdown
+
+- The Base Item and Spell lists are now dropdowns with the search field **inside** the open list, replacing the separate search box from 0.9.2. Open the list (or just start typing on it), type part of a name, then click a result or use the arrow keys and Enter. Escape or clicking elsewhere closes it.
+- The open list floats above the builder window, so it is never cut off at the bottom of a card or window.
+
 ## v0.9.2 Search boxes and GM progression notes
 
 - **Search** above the Base Item list (weapons, armor, foci, equipment) and above the Spell list in Spell components. Type part of a name to narrow the list. Several words match in any order, and Enter picks the first match. The search is kept when the builder redraws.
