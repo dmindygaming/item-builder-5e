@@ -5,7 +5,7 @@
  * condition, its own limited uses, and (for timed benefits) an Active Effect it applies to the user.
  * It shows on the character sheet and works the same with or without Item Builder or Midi-QOL.
  */
-import { MODULE_ID, coreGeneration, saveBonusKey, withEffectChanges } from "./compat.mjs";
+import { MODULE_ID, coreGeneration, saveBonusKey, usesFormula, usesLabel, withEffectChanges } from "./compat.mjs";
 
 /** Reaction outcomes offered in the builder. */
 export const REACTION_EFFECTS = {
@@ -91,7 +91,7 @@ export function reactionActivityData(c, { id, effectId=null, spent=0 }={}) {
     target: { affects: { type: "self" }, prompt: false },
     effects: effectId ? [{ _id: effectId }] : []
   };
-  const uses = String(c.uses ?? "").trim();
+  const uses = usesFormula(c);
   if ( uses ) {
     const period = ["sr", "lr", "day", "dawn"].includes(c.recovery) ? c.recovery : "";
     data.uses = { max: uses, spent: Number(spent) || 0, recovery: period ? [{ period, type: "recoverAll" }] : [] };
@@ -140,9 +140,9 @@ export function reactionSummary(c, abilityLabel=k => k) {
     saveBonus: `+${f || 1} to saving throws until the start of your next turn`,
     description: "see the rules text"
   }[c.reactionEffect] ?? "";
-  const uses = String(c.uses ?? "").trim();
+  const uses = usesLabel(c, abilityLabel);
   const per = { sr: "short rest", lr: "long rest", day: "day", dawn: "dawn" }[c.recovery];
-  const usesText = uses ? ` (${uses} use${uses === "1" ? "" : "s"}${per ? ` per ${per}` : ""})` : "";
+  const usesText = uses ? ` (${/^\d+$/.test(uses) ? `${uses} use${uses === "1" ? "" : "s"}` : `uses equal to your ${uses}`}${per ? ` per ${per}` : ""})` : "";
   return `Reaction — ${reactionTriggerText(c) || "trigger not set"}: ${what}${usesText}.`;
 }
 

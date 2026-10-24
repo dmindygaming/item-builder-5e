@@ -1,6 +1,6 @@
 import {
   MODULE_ID, effectChangesUpdate, halfAsiChange, movementKey, normalizeAttunement,
-  readEffectChanges, readRarity, stripBuilderDescription, remapChangeKey, resolveUuid, resolveUuidSync, senseKey, statusEffectList,
+  USES_MODES, readEffectChanges, readRarity, stripBuilderDescription, usesFormula, usesLabel, usesSetting, remapChangeKey, resolveUuid, resolveUuidSync, senseKey, statusEffectList,
   withEffectChanges, writeRarity
 } from "./compat.mjs";
 import { ItemExportApp, ItemImportApp, exportItemsToFile } from "./portability.mjs";
@@ -12,7 +12,7 @@ import {
   itemHasOwnUse, ruleFromComponent, ruleHandling, syncRuleEffects
 } from "./rules.mjs";
 
-const MODULE_VERSION = "0.9.0";
+const MODULE_VERSION = "0.9.1";
 const { ApplicationV2, DialogV2 } = foundry.applications.api;
 
 const esc = v => foundry.utils.escapeHTML(String(v ?? ""));
@@ -130,6 +130,17 @@ function ruleSentence(c){
   let out=parts.join(" ");
   out+=filters.length?`, only when ${listText(filters,"and")}.`:`, always.`;
   return out;
+}
+
+
+/** Uses selection shared by Spell and Reaction components. */
+function usesFields(c,i,{recovery}={}){
+  const u=usesSetting(c);
+  const abilities=Object.fromEntries(Object.entries(cfg("abilities",{})).map(([k,v])=>[k,loc(v,k)]));
+  return `<label>Uses<select name="c.${i}.usesMode">${selectOptions(USES_MODES,u.mode,false)}</select></label>
+    ${u.mode==="fixed"?`<label>Number of Uses<input type="number" min="1" name="c.${i}.usesCount" value="${esc(u.count)}"></label>`:""}
+    ${["ability","profAbility"].includes(u.mode)?`<label>Ability<select name="c.${i}.usesAbility">${selectOptions(abilities,u.ability,false)}</select></label>`:""}
+    ${u.mode!=="unlimited"&&recovery?`<label>Recovery<select name="c.${i}.recovery">${selectOptions(recovery,c.recovery&&c.recovery in recovery?c.recovery:"lr",false)}</select></label>`:""}`;
 }
 
 function creatureMulti(selected=[]) {
@@ -581,7 +592,7 @@ class ItemBuilder5e extends ApplicationV2 {
       this.render({force:true});
     }));
     el.querySelectorAll('select[name$=".rollTarget"],select[name$=".appliesTo"]').forEach(sel=>sel.addEventListener("change",()=>{this._capture();this.render({force:true});}));
-    el.querySelectorAll('select[name$=".reactionEffect"],select[name$=".trigger"]').forEach(sel=>sel.addEventListener("change",()=>{this._capture();this.render({force:true});}));
+    el.querySelectorAll('select[name$=".reactionEffect"],select[name$=".trigger"],select[name$=".usesMode"]').forEach(sel=>sel.addEventListener("change",()=>{this._capture();this.render({force:true});}));
     el.querySelectorAll('select[name$=".selectionMode"]').forEach(sel=>sel.addEventListener("change",()=>{this._capture();this.render({force:true});}));
 
     el.querySelectorAll("[data-add-component]").forEach(btn=>btn.addEventListener("click",e=>{
@@ -664,7 +675,7 @@ class ItemBuilder5e extends ApplicationV2 {
       }
       if(c.type==="reference")c.text=v(`c.${i}.text`)??c.text;
       if(c.type==="reaction"){
-        for(const k of ["trigger","triggerText","reactionEffect","formula","damageType","saveAbility","saveDC","onSave","uses","recovery","text"])c[k]=v(`c.${i}.${k}`)??c[k];
+        for(const k of ["trigger","triggerText","reactionEffect","formula","damageType","saveAbility","saveDC","onSave","usesMode","usesCount","usesAbility","recovery","text"])c[k]=v(`c.${i}.${k}`)??c[k];
       }
       if(c.type==="spell"){
         c.spellUuid=v(`c.${i}.spellUuid`)??c.spellUuid;
@@ -672,7 +683,7 @@ class ItemBuilder5e extends ApplicationV2 {
         if(displayInSpellbook!==undefined)c.displayInSpellbook=displayInSpellbook;
         c.castingAbility=v(`c.${i}.castingAbility`)??c.castingAbility;
         c.level=v(`c.${i}.level`)??c.level;
-        c.uses=v(`c.${i}.uses`)??c.uses;
+        for(const k of ["usesMode","usesCount","usesAbility"])c[k]=v(`c.${i}.${k}`)??c[k];
         c.recovery=v(`c.${i}.recovery`)??c.recovery;
       }
       if(c.type==="conditional"){
@@ -849,28 +860,27 @@ class ItemBuilder5e extends ApplicationV2 {
     if(type==="ability")Object.assign(c,{name:"Ability Score",ability:"str",mode:"add",value:"2"});
     if(type==="halfAsi")Object.assign(c,{name:"2024 Half-ASI",selectionMode:"choice",ability:"str",allowedAbilities:Object.keys(cfg("abilities",{})),selectedAbility:""});
     if(type==="reference")Object.assign(c,{name:"Special Rule",text:""});
-    if(type==="reaction")Object.assign(c,{name:"Reaction",trigger:"hit",triggerText:"",reactionEffect:"acBonus",formula:"2",damageType:"any",saveAbility:"dex",saveDC:"13",onSave:"half",uses:"",recovery:"lr",text:""});
-    if(type==="spell")Object.assign(c,{name:"Granted Spell",spellUuid:"",displayInSpellbook:true,castingAbility:"",level:"",uses:"",recovery:"none"});
+    if(type==="reaction")Object.assign(c,{name:"Reaction",trigger:"hit",triggerText:"",reactionEffect:"acBonus",formula:"2",damageType:"any",saveAbility:"dex",saveDC:"13",onSave:"half",usesMode:"unlimited",usesCount:"1",usesAbility:"cha",recovery:"lr",text:""});
+    if(type==="spell")Object.assign(c,{name:"Granted Spell",spellUuid:"",displayInSpellbook:true,castingAbility:"",level:"",usesMode:"unlimited",usesCount:"1",usesAbility:"cha",recovery:"lr"});
     if(type==="skill")Object.assign(c,{name:"Skill Training",skill:"acr",proficiency:"1",ability:""});
     if(RULE_CATEGORIES[type])Object.assign(c,{type:"conditional",ruleCategory:type,name:RULE_CATEGORIES[type].label,sourceTypes:[],sourceSubtype:"",targetSubtype:"",activityName:"",targetTypes:[],effect:Object.keys(RULE_CATEGORIES[type].effects)[0],formula:type==="offensive"?"1d6":"",damageType:type==="offensive"?"radiant":"any",canCrit:false,ability:"",status:"",activeEffectKey:"",activeEffectMode:"2",activeEffectValue:"",trigger:type==="defensive"?"damage":"",rollTarget:"attack",skill:"",appliesTo:"self"});
     this.builderData.components.push(c);
   }
 
   _components(){
-    return `<div class="section-head"><div><h2>Components</h2><p>Add mechanics without touching UUIDs, data paths, or Active Effect keys.</p></div><div class="add">
-      <button type="button" data-add-component="movement"><i class="fa-solid fa-person-running"></i> Movement</button>
-      <button type="button" data-add-component="sense"><i class="fa-solid fa-eye"></i> Senses</button>
-      <button type="button" data-add-component="ability"><i class="fa-solid fa-dumbbell"></i> Ability Score</button>
-      ${this.builderData.category==="feat"?`<button type="button" data-add-component="halfAsi"><i class="fa-solid fa-arrow-up-1-9"></i> 2024 Half-ASI</button>`:""}
-      <button type="button" data-add-component="spell"><i class="fa-solid fa-wand-sparkles"></i> Spell</button>
-      <button type="button" data-add-component="skill"><i class="fa-solid fa-graduation-cap"></i> Skill</button>
-      <button type="button" data-add-component="reaction"><i class="fa-solid fa-bolt-lightning"></i> Reaction</button>
-      <button type="button" data-add-component="reference"><i class="fa-solid fa-align-left"></i> Rules Text</button>
-      <button type="button" data-add-component="offensive"><i class="fa-solid fa-burst"></i> Offensive Effect</button>
-      <button type="button" data-add-component="defensive"><i class="fa-solid fa-shield-halved"></i> Defensive Effect</button>
-      <button type="button" data-add-component="healing"><i class="fa-solid fa-heart-pulse"></i> Healing / Recovery Effect</button>
-      <button type="button" data-add-component="utility"><i class="fa-solid fa-wand-magic-sparkles"></i> Utility / Control Effect</button>
-    </div></div>
+    const btn=(type,icon,label)=>`<button type="button" data-add-component="${type}"><i class="fa-solid ${icon}"></i><span>${label}</span></button>`;
+    return `<div class="section-head"><div><h2>Components</h2><p>Add mechanics without touching UUIDs, data paths, or Active Effect keys.</p></div></div>
+      <div class="ib90-add">
+        <div class="ib90-group"><h4>Character Traits</h4><div class="ib90-buttons">
+          ${btn("movement","fa-person-running","Movement")}${btn("sense","fa-eye","Senses")}${btn("ability","fa-dumbbell","Ability Score")}${btn("skill","fa-graduation-cap","Skill")}${this.builderData.category==="feat"?btn("halfAsi","fa-arrow-up-1-9","2024 Half-ASI"):""}
+        </div></div>
+        <div class="ib90-group"><h4>Actions</h4><div class="ib90-buttons">
+          ${btn("spell","fa-wand-sparkles","Spell")}${btn("reaction","fa-bolt-lightning","Reaction")}${btn("reference","fa-align-left","Rules Text")}
+        </div></div>
+        <div class="ib90-group"><h4>Rule Effects</h4><div class="ib90-buttons">
+          ${btn("offensive","fa-burst","Offensive")}${btn("defensive","fa-shield-halved","Defensive")}${btn("healing","fa-heart-pulse","Healing / Recovery")}${btn("utility","fa-wand-magic-sparkles","Utility / Control")}
+        </div></div>
+      </div>
     ${this.builderData.components.length?this.builderData.components.map((c,i)=>this._component(c,i)).join(""):`<div class="empty"><i class="fa-solid fa-puzzle-piece"></i><p>No components yet.</p></div>`}`;
   }
 
@@ -900,8 +910,7 @@ class ItemBuilder5e extends ApplicationV2 {
         <label>What Happens<select name="c.${i}.reactionEffect">${selectOptions(REACTION_EFFECTS,e,false)}</select></label>
         ${fLabel?`<label>${fLabel[0]}<input name="c.${i}.formula" value="${esc(c.formula)}" placeholder="${esc(fLabel[1])}"></label>`:""}
         ${dmgType}${saveFields}
-        <label>Uses ${this._tip("Leave blank for unlimited (it still costs the reaction).")}<input name="c.${i}.uses" value="${esc(c.uses)}" placeholder="Unlimited"></label>
-        <label>Recovery<select name="c.${i}.recovery">${selectOptions({lr:"Long Rest",sr:"Short Rest",dawn:"Dawn",day:"Day",none:"Never"},c.recovery||"lr",false)}</select></label>
+        ${usesFields(c,i,{recovery:{lr:"Long Rest",sr:"Short Rest",dawn:"Dawn",day:"Day",none:"Never"}})}
       </div>
       <label>Rules Text (optional) ${this._tip("Shown on the chat card when the reaction is used.")}<textarea name="c.${i}.text" rows="2">${esc(c.text)}</textarea></label>
       <div class="ib60-handling native"><i class="fa-solid fa-layer-group"></i><div><strong>Built into the item</strong> — added as a D&D5e activity with Reaction activation${note?`. ${esc(note)}`:"."} Works even with Item Builder disabled.</div></div>
@@ -914,8 +923,7 @@ class ItemBuilder5e extends ApplicationV2 {
       <label>Casting Ability<select name="c.${i}.castingAbility"><option value="">Actor / spell default</option>${abilityOptions(c.castingAbility)}</select></label>
       <label>Casting Level<input type="number" min="0" max="9" name="c.${i}.level" value="${esc(c.level)}" placeholder="Spell default"></label>
       <label class="check"><input type="checkbox" name="c.${i}.displayInSpellbook" ${c.displayInSpellbook?"checked":""}> Show in Item Spells</label>
-      <label>Uses<input name="c.${i}.uses" value="${esc(c.uses)}" placeholder="Blank = unlimited"></label>
-      <label>Recovery<select name="c.${i}.recovery"><option value="none" ${c.recovery==="none"?"selected":""}>None</option><option value="sr" ${c.recovery==="sr"?"selected":""}>Short Rest</option><option value="lr" ${c.recovery==="lr"?"selected":""}>Long Rest</option></select></label>
+      ${usesFields(c,i,{recovery:{lr:"Long Rest",sr:"Short Rest",dawn:"Dawn",day:"Day",none:"Never"}})}
     </div>`;
     if(c.type==="skill")body=`<div class="grid2">
       <label>Skill ${this._tip("Choose the skill this item grants or modifies.")}
@@ -1251,9 +1259,9 @@ function castActivityData(spell,c={}){
   const data={name:spell.name,spell:{uuid:spell.uuid,spellbook:c.displayInSpellbook!==false}};
   if(c.castingAbility)data.spell.ability=c.castingAbility;
   if(c.level!==""&&c.level!==undefined&&c.level!==null&&Number.isFinite(Number(c.level)))data.spell.level=Number(c.level);
-  const uses=String(c.uses??"").trim();
+  const uses=usesFormula(c);
   if(uses){
-    data.uses={max:uses,spent:0,recovery:["sr","lr"].includes(c.recovery)?[{period:c.recovery,type:"recoverAll"}]:[]};
+    data.uses={max:uses,spent:0,recovery:["sr","lr","dawn","day"].includes(c.recovery)?[{period:c.recovery,type:"recoverAll"}]:[]};
     data.consumption={targets:[{type:"activityUses",value:"1"}],spellSlot:false};
   }
   return data;

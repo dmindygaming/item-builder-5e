@@ -345,3 +345,51 @@ export function stripBuilderDescription(html) {
     .replace(/^(\s*<p>\s*<\/p>\s*)+$/i, "")
     .trim();
 }
+
+/** How a limited-use count is chosen in the builder. */
+export const USES_MODES = {
+  unlimited: "Unlimited",
+  fixed: "Fixed number",
+  prof: "Proficiency bonus",
+  ability: "Ability modifier (minimum 1)",
+  profAbility: "Proficiency bonus + ability modifier"
+};
+
+/**
+ * Read a component's uses setting, including components saved before the selection existed
+ * (a free-text `uses` formula).
+ * @returns {{mode: string, count: string, ability: string}}
+ */
+export function usesSetting(c) {
+  if ( c?.usesMode && USES_MODES[c.usesMode] ) {
+    return { mode: c.usesMode, count: String(c.usesCount ?? "1"), ability: c.usesAbility || "cha" };
+  }
+  const raw = String(c?.uses ?? "").trim();
+  if ( !raw ) return { mode: "unlimited", count: "1", ability: c?.usesAbility || "cha" };
+  if ( raw === "@prof" ) return { mode: "prof", count: "1", ability: "cha" };
+  const m = raw.match(/^(?:max\(\s*1\s*,\s*)?@abilities\.(\w+)\.mod\s*\)?$/);
+  if ( m ) return { mode: "ability", count: "1", ability: m[1] };
+  return { mode: "fixed", count: raw, ability: "cha" };
+}
+
+/** The D&D5e uses formula for a component, or "" for unlimited. */
+export function usesFormula(c) {
+  const { mode, count, ability } = usesSetting(c);
+  switch ( mode ) {
+    case "fixed": return String(count || "1");
+    case "prof": return "@prof";
+    case "ability": return `max(1, @abilities.${ability}.mod)`;
+    case "profAbility": return `max(1, @prof + @abilities.${ability}.mod)`;
+    default: return "";
+  }
+}
+
+/** Short label for a component's uses, e.g. "Proficiency bonus" or "Charisma modifier". */
+export function usesLabel(c, abilityLabel=k => k) {
+  const { mode, count, ability } = usesSetting(c);
+  if ( mode === "fixed" ) return String(count || "1");
+  if ( mode === "prof" ) return "proficiency bonus";
+  if ( mode === "ability" ) return `${abilityLabel(ability)} modifier`;
+  if ( mode === "profAbility" ) return `proficiency bonus + ${abilityLabel(ability)} modifier`;
+  return "";
+}
