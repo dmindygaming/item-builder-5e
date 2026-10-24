@@ -6,6 +6,7 @@ import {
 import { ItemExportApp, ItemImportApp, exportItemsToFile } from "./portability.mjs";
 import { applyNativeAsi, halfAsiHandled, halfAsiIsNative, upgradeHalfAsi } from "./asi.mjs";
 import { enhanceSearchableSelects } from "./combo.mjs";
+import { ItemBuilderHelp, registerHelpMenu } from "./help.mjs";
 import { registerTokenSizeHooks } from "./tokensize.mjs";
 import { REACTION_EFFECTS, REACTION_TRIGGERS, reactionSummary, syncReactions } from "./reactions.mjs";
 import {
@@ -14,7 +15,7 @@ import {
   itemHasOwnUse, ruleFromComponent, sizeAfter, ruleHandling, syncRuleEffects
 } from "./rules.mjs";
 
-const MODULE_VERSION = "1.0.0";
+const MODULE_VERSION = "1.0.1";
 const { ApplicationV2, DialogV2 } = foundry.applications.api;
 
 const esc = v => foundry.utils.escapeHTML(String(v ?? ""));
@@ -574,6 +575,7 @@ class ItemBuilder5e extends ApplicationV2 {
     super._onRender(context, options);
     const el=this.element;
 
+    el.querySelector("[data-open-help]")?.addEventListener("click",e=>{e.preventDefault();ItemBuilderHelp.open(this._helpSection());});
     el.querySelectorAll("[data-tab]").forEach(btn=>btn.addEventListener("click",e=>{
       e.preventDefault(); this._capture(); this.activeTab=e.currentTarget.dataset.tab; this.render({force:true});
     }));
@@ -739,6 +741,9 @@ class ItemBuilder5e extends ApplicationV2 {
     });
   }
 
+  /** Guide section matching the tab being viewed. */
+  _helpSection(){return {basics:"basics",components:"components",progression:"progression",description:"description"}[this.activeTab]??null;}
+
   _tip(text){return `<span class="tip" title="${esc(text)}"><i class="fa-solid fa-circle-info"></i></span>`}
 
   _html() {
@@ -749,6 +754,7 @@ class ItemBuilder5e extends ApplicationV2 {
           ${this.editItem ? `<button type="button" data-export-current title="Download this item as a portable file another world can import"><i class="fa-solid fa-file-export"></i> Export This Item</button>` : ""}
           <button type="button" data-open-export title="Export several items to a portable file"><i class="fa-solid fa-file-export"></i> Export Items</button>
           <button type="button" data-open-import title="Import items exported from another world"><i class="fa-solid fa-file-import"></i> Import Items</button>
+          <button type="button" data-open-help title="Guide: where every feature is and how it works"><i class="fa-solid fa-book-open"></i> Guide</button>
         </div></header>
       <nav class="tabs">${tabs.map(([id,l,i])=>`<button type="button" data-tab="${id}" class="${this.activeTab===id?"active":""}"><i class="fa-solid ${i}"></i>${l}</button>`).join("")}</nav>
       <main class="body"><section>${this._tab()}</section><aside><h2>Preview</h2><div data-preview class="preview"></div>
@@ -1346,6 +1352,7 @@ function openBuilder(){
 Hooks.once("init",()=>{
   registerRuleHooks();
   registerTokenSizeHooks();
+  registerHelpMenu();
   // Retained as a hidden legacy setting so existing worlds do not lose stored configuration.
   // Extra damage now travels through D&D5e's native damage card and application controls.
   game.settings.register(MODULE_ID,"autoExtra",{name:"Legacy automatic conditional extra damage",scope:"world",config:false,type:Boolean,default:true,restricted:true});
@@ -1355,6 +1362,7 @@ Hooks.once("init",()=>{
 Hooks.once("ready",()=>{
   game.modules.get(MODULE_ID).api={
     open:openBuilder,
+    guide:section=>ItemBuilderHelp.open(section),
     edit:item=>new ItemBuilder5e({editItem:item}).render({force:true}),
     setTier,
     match,
@@ -1453,7 +1461,8 @@ Hooks.on("renderItemDirectory",(_app,html)=>{
   wrap.append(
     make("ib33-directory-button","fa-hammer","Item Builder","Open Item Builder",openBuilder),
     make("ib50-directory-icon","fa-file-import","","Import Item Builder items",()=>new ItemImportApp().render({force:true})),
-    make("ib50-directory-icon","fa-file-export","","Export items for another world",()=>new ItemExportApp().render({force:true}))
+    make("ib50-directory-icon","fa-file-export","","Export items for another world",()=>new ItemExportApp().render({force:true})),
+    make("ib50-directory-icon","fa-book-open","","Item Builder guide",()=>ItemBuilderHelp.open())
   );
   header.after(wrap);
 });
