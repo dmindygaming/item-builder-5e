@@ -264,9 +264,9 @@
 .ib91-tier-dialog .ib91-gm-notes li.current { font-weight: 600; }
 
 /* v1.0.1 in-game guide */
-.item-builder-5e-help .window-content { padding: 0; overflow: hidden; }
-.item-builder-5e-help .ibh-root { display: grid; grid-template-columns: 230px minmax(0, 1fr); height: 100%; }
-.item-builder-5e-help .ibh-toc { padding: .8rem .7rem; overflow-y: auto; border-right: 1px solid #7775; background: #7771; }
+.item-builder-5e-help .window-content { display: flex; flex-direction: column; padding: 0; overflow: hidden; }
+.item-builder-5e-help .ibh-root { display: grid; grid-template-columns: 230px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); flex: 1 1 auto; min-height: 0; }
+.item-builder-5e-help .ibh-toc { min-height: 0; padding: .8rem .7rem; overflow-y: auto; border-right: 1px solid #7775; background: #7771; }
 .item-builder-5e-help .ibh-toc h2 { margin: 0 0 .5rem; font-size: 1.05rem; border: 0; }
 .item-builder-5e-help .ibh-toc ul { margin: 0; padding: 0; list-style: none; }
 .item-builder-5e-help .ibh-toc > ul > li { margin: .1rem 0; }
@@ -276,7 +276,7 @@
 .item-builder-5e-help .ibh-toc > ul > li > a { font-weight: 700; }
 .item-builder-5e-help .ibh-toc a > i { width: 1.1rem; text-align: center; opacity: .7; }
 .item-builder-5e-help .ibh-toc li ul a { font-size: .92em; }
-.item-builder-5e-help .ibh-body { padding: .4rem 1.2rem 3rem; overflow-y: auto; line-height: 1.45; scroll-behavior: smooth; }
+.item-builder-5e-help .ibh-body { padding: .4rem 1.2rem 60vh; overflow-y: auto; line-height: 1.45; min-height: 0; }
 .item-builder-5e-help .ibh-section { padding: .3rem .5rem .6rem; margin: 0 -.5rem; border-radius: 6px; }
 .item-builder-5e-help .ibh-section h2 { margin: 1.1rem 0 .4rem; padding-bottom: .3rem; border-bottom: 1px solid #7776; }
 .item-builder-5e-help .ibh-section.sub h3 { margin: .9rem 0 .3rem; }
