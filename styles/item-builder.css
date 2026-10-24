@@ -227,3 +227,23 @@
 .item-builder-5e .ib33-root .ib90-buttons button > i { width: 1rem; text-align: center; opacity: .8; }
 .item-builder-5e .ib33-root .ib90-buttons button > span { overflow: hidden; text-overflow: ellipsis; }
 @media (max-width: 900px) { .item-builder-5e .ib33-root .ib90-group { grid-template-columns: 1fr; gap: .3rem; } }
+
+/* v0.9.2 search boxes for long lists */
+.item-builder-5e .ib33-root .ib91-search { position: relative; display: flex; align-items: center; margin-top: .25rem; }
+.item-builder-5e .ib33-root .ib91-search > i { position: absolute; left: .55rem; opacity: .55; font-size: .85em; pointer-events: none; }
+.item-builder-5e .ib33-root .body .ib91-search input[type=search] { margin: 0; padding-left: 1.9rem; padding-right: 5.5rem; }
+.item-builder-5e .ib33-root .ib91-search small { position: absolute; right: .55rem; font-weight: 400; opacity: .65; pointer-events: none; }
+.item-builder-5e .ib33-root .ib91-search + select { margin-top: .3rem !important; }
+
+/* v0.9.2 GM-only progression notes */
+.item-builder-5e .ib33-root .ib91-tier { display: grid; gap: .3rem; padding: .45rem .55rem; border: 1px solid #7774; border-radius: 6px; }
+.item-builder-5e .ib33-root .ib91-tier .tier-row { margin: 0; }
+.item-builder-5e .ib33-root .ib91-note { font-weight: 600; }
+.item-builder-5e .ib33-root .ib91-note > i { opacity: .6; margin-right: .2rem; }
+.item-builder-5e .ib33-root .ib91-note .muted { font-weight: 400; text-transform: none; }
+.item-builder-5e .ib33-root .ib91-tier .ib91-note { margin: 0 0 0 2.7rem !important; font-size: .9em; }
+.item-builder-5e .ib33-root .ib91-summary-note { font-style: italic; opacity: .8; }
+.ib91-tier-dialog .ib91-gm-notes { margin-top: .6rem; padding: .5rem .7rem; border: 1px dashed #7777; border-radius: 6px; font-size: .92em; line-height: 1.35; }
+.ib91-tier-dialog .ib91-gm-notes ol { margin: .3rem 0; padding-left: 1.3rem; }
+.ib91-tier-dialog .ib91-gm-notes li { margin: .25rem 0; }
+.ib91-tier-dialog .ib91-gm-notes li.current { font-weight: 600; }
