@@ -2,6 +2,11 @@
 
 All notable changes to Item Builder 5e.
 
+## v0.9.2 Search boxes and GM progression notes
+
+- **Search** above the Base Item list (weapons, armor, foci, equipment) and above the Spell list in Spell components. Type part of a name to narrow the list. Several words match in any order, and Enter picks the first match. The search is kept when the builder redraws.
+- **GM-only progression notes.** On the Progression tab, each tier has a note for how the item reaches it (the first tier's note describes its starting state), plus a general **Progression Notes** box. They show in the Unlock Summary and in the tier window on the item sheet, which only GMs can open, so you can check your plan before applying a new tier. Players never see them in the interface.
+
 ## v0.9.1 Uses as a selection, tidier component buttons
 
 - **Uses** on Reactions and granted Spells is now a selection: Unlimited, Fixed number, Proficiency bonus, Ability modifier (minimum 1), or Proficiency bonus + ability modifier. Ability modes show an ability selection, and Recovery only appears for limited uses. The uses scale automatically as the character levels up or their ability scores change.
