@@ -2,6 +2,13 @@
 
 All notable changes to Item Builder 5e.
 
+## v1.0.4 Item Properties in the description
+
+- The item's description now lists its **Item Properties** below your own text, in plain language for players: enhancement bonuses ("+1 bonus to attack and damage rolls made with this weapon"), speeds, senses, ability scores, skills, Half-ASI, granted spells with their uses, reactions, rules text, and every rule effect ("Resistance to poison damage", "Deals an extra 2d6 radiant damage, only when the target is undead").
+- **Follows tiers.** Only properties the item has unlocked are listed, with the tier name. When you tier the item up, the new properties are added to the description automatically (and removed if you lower it).
+- Chat cards still show only your text; the list is hidden there.
+- Text you edit directly on the item sheet is kept when the list is rebuilt. Existing items get the list once, the next time the GM logs in; imported items get it on import.
+
 ## v1.0.3 Granted spells follow tiers
 
 - Fixed: a granted spell from a higher tier stayed on the item after the tier was lowered. Spell components now behave like reactions: their Cast activity appears when the tier is reached and is removed when the tier drops (or the Spell component is deleted), keeping its spent uses rule as before.
