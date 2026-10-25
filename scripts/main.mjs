@@ -15,7 +15,7 @@ import {
   itemHasOwnUse, ruleFromComponent, sizeAfter, ruleHandling, syncRuleEffects
 } from "./rules.mjs";
 
-const MODULE_VERSION = "1.0.2";
+const MODULE_VERSION = "1.0.3";
 const { ApplicationV2, DialogV2 } = foundry.applications.api;
 
 const esc = v => foundry.utils.escapeHTML(String(v ?? ""));
@@ -1230,7 +1230,7 @@ class ItemBuilder5e extends ApplicationV2 {
     let nativeAsi={ids:{},removed:[]};
     if(data.type==="feat")nativeAsi=applyNativeAsi(data,b.components,Object.keys(cfg("abilities",{})),()=>foundry.utils.randomID());
     data.flags[MODULE_ID]={
-      schemaVersion:12,nativeAsiIds:nativeAsi.ids,nativePatches:data.flags?.[MODULE_ID]?.nativePatches??"",reactions:data.flags?.[MODULE_ID]?.reactions??"",progressionNotes:b.progressionNotes||"",currentTier:b.currentTier,tiers:foundry.utils.deepClone(b.tiers),
+      schemaVersion:12,spellGrants:data.flags?.[MODULE_ID]?.spellGrants??"",nativeAsiIds:nativeAsi.ids,nativePatches:data.flags?.[MODULE_ID]?.nativePatches??"",reactions:data.flags?.[MODULE_ID]?.reactions??"",progressionNotes:b.progressionNotes||"",currentTier:b.currentTier,tiers:foundry.utils.deepClone(b.tiers),
       components:foundry.utils.deepClone(b.components),
       rules:b.components.filter(c=>c.type==="conditional").map(c=>this._rule(c)),
       category:b.category,baseUuid:b.baseUuid,enhancementBonus:Number(b.enhancementBonus)||0,
@@ -1270,17 +1270,14 @@ class ItemBuilder5e extends ApplicationV2 {
         const freshEffects=b.components.map(c=>this._effect(c,b.name,b.currentTier)).filter(Boolean);
         if(freshEffects.length)await item.createEmbeddedDocuments("ActiveEffect",freshEffects);
 
-        // Existing Cast activities are left intact for now unless newly required.
-        for(const c of b.components.filter(c=>c.type==="spell"&&Number(c.tier)<=b.currentTier)){
-          if(!hasCastActivity(item,c.spellUuid))await this._createSpellActivity(item,c);
-        }
+        await syncSpellGrants(item);
 
         await syncRuleEffects(item);
         await syncReactions(item);
         ui.notifications.info(`Item Builder: Updated "${item.name}".`);
       }else{
         item=await Item.create(data,{renderSheet:false});
-        for(const c of b.components.filter(c=>c.type==="spell"&&Number(c.tier)<=b.currentTier))await this._createSpellActivity(item,c);
+        await syncSpellGrants(item);
         await syncRuleEffects(item);
         await syncReactions(item);
         ui.notifications.info(`Item Builder: Created "${item.name}".`);
@@ -1307,6 +1304,41 @@ function hasCastActivity(item,uuid){
   return [...(item.system?.activities??[])].some(a=>a.type==="cast"&&(a.spell?.uuid===uuid||a.system?.spell?.uuid===uuid));
 }
 
+function castActivities(item,uuid){
+  return [...(item.system?.activities??[])].filter(a=>a.type==="cast"&&(a.spell?.uuid===uuid||a.system?.spell?.uuid===uuid));
+}
+
+/**
+ * Make the item's granted-spell Cast activities match its Spell components at the current tier:
+ * add the ones that are unlocked, and remove ones whose tier is no longer reached or whose
+ * component was deleted. Only activities Item Builder created (or that match a Spell
+ * component's spell) are ever removed.
+ */
+async function syncSpellGrants(item){
+  if(!item?.system?.activities)return;
+  const tier=Number(item.getFlag(MODULE_ID,"currentTier")??1)||1;
+  const comps=(item.getFlag(MODULE_ID,"components")??[]).filter(c=>c.type==="spell"&&c.spellUuid);
+  let record={};
+  try{record=JSON.parse(item.getFlag(MODULE_ID,"spellGrants")||"{}");}catch{record={};}
+  const next={};
+  const remove=new Set();
+  // Grants whose component is gone.
+  for(const [cid,aid] of Object.entries(record)) if(!comps.some(c=>c.id===cid)&&item.system.activities.get?.(aid)) remove.add(aid);
+  for(const c of comps){
+    const unlocked=(Number(c.tier)||1)<=tier;
+    const recorded=record[c.id]&&item.system.activities.get?.(record[c.id])?record[c.id]:null;
+    const existing=recorded?[item.system.activities.get(recorded)]:castActivities(item,c.spellUuid);
+    if(!unlocked){ existing.forEach(a=>remove.add(a.id)); continue; }
+    if(existing.length){ next[c.id]=existing[0].id; continue; }
+    const before=new Set([...item.system.activities].map(a=>a.id));
+    try{await createSpellActivity(item,c);}catch(err){console.warn(`${MODULE_ID} | spell grant failed`,err);}
+    const made=castActivities(item,c.spellUuid).find(a=>!before.has(a.id));
+    if(made)next[c.id]=made.id;
+  }
+  for(const id of remove){ try{await item.deleteActivity(id);}catch(err){console.warn(`${MODULE_ID} | could not remove spell grant`,err);} }
+  await item.setFlag(MODULE_ID,"spellGrants",JSON.stringify(next));
+}
+
 async function createSpellActivity(item,c){
   if(!c?.spellUuid)return;
   const spell=await resolveUuid(c.spellUuid);
@@ -1328,11 +1360,7 @@ async function setTier(item,newTier){
   for(const effect of item.effects??[]){const min=Number(effect.getFlag(MODULE_ID,"minTier")??1);if(effect.getFlag(MODULE_ID,"managed"))updates.push({_id:effect.id,disabled:min>newTier})}
   if(updates.length)await item.updateEmbeddedDocuments("ActiveEffect",updates);
 
-  const comps=item.getFlag(MODULE_ID,"components")??[];
-  for(const c of comps.filter(c=>c.type==="spell"&&(Number(c.tier)||1)<=newTier&&c.spellUuid)){
-    if(hasCastActivity(item,c.spellUuid))continue;
-    try{await createSpellActivity(item,c)}catch(err){console.warn(`${MODULE_ID} | tier spell unlock failed`,err)}
-  }
+  await syncSpellGrants(item);
   await syncRuleEffects(item);
   await syncReactions(item);
   ui.notifications.info(`${item.name}: now ${tiers[newTier-1]?.name??`Tier ${newTier}`}.`);
