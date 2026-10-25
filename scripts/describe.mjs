@@ -14,6 +14,20 @@ const cfg = (path, fallback={}) => foundry.utils.getProperty(globalThis.CONFIG?.
 const loc = (raw, fallback="") => game.i18n.localize(raw?.label ?? raw ?? fallback) || fallback;
 const esc = v => String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
+const MOVE_WORDS = { walk: "walking", fly: "flying", swim: "swimming", climb: "climbing", burrow: "burrowing" };
+export function moveWord(key) { return MOVE_WORDS[key] ?? String(key ?? "").toLowerCase(); }
+
+/** "attack rolls", "Athletics checks", "Dexterity saving throws", "initiative rolls"… */
+function rollWords(c) {
+  const t = c.rollTarget || "attack";
+  const ab = c.ability ? loc(cfg("abilities", {})[c.ability], c.ability) : "";
+  if ( t === "skill" ) return c.skill ? `${loc(cfg("skills", {})[c.skill], c.skill)} checks` : "skill checks";
+  if ( t === "save" ) return ab ? `${ab} saving throws` : "saving throws";
+  if ( t === "check" ) return ab ? `${ab} checks` : "ability checks";
+  if ( t === "initiative" ) return "initiative rolls";
+  return String(ROLL_TARGETS[t] ?? "rolls").toLowerCase();
+}
+
 /** Which side of a rule is always the item's own user (its creature filters would only ever test the user). */
 export function selfSide(c){
   if(c.ruleCategory==="healing")return null;
@@ -48,21 +62,24 @@ export function ruleSentence(c, { player=false }={}){
     acBonus:`+${f} AC`,
     saveBonus:`+${f} to ${ab?`${ab} `:""}saving throws`,
     saveAdvantage:`Advantage on ${ab?`${ab} `:""}saving throws`,
-    bonusHealing:`Healing you do restores ${f} more`,
-    healingReceived:`Healing you receive changes by ${f}`,
+    bonusHealing:`Healing you do restores ${f} more hit points`,
+    healingReceived:/^-/.test(f)?`${f} to healing you receive`:`+${f} to healing you receive`,
     temporaryHp:`Grants ${f} temporary hit points`,
     recoveryBonus:`+${f} per Hit Die spent`,
-    sizeChange:c.sizeMode==="set"?`Becomes ${loc(cfg("actorSizes",{})[c.size||"lg"],c.size||"lg")} size${player?"":", with tokens resized to match"}`:`${Number(c.sizeSteps)<0||c.sizeMode==="shrink"?"Shrinks":"Grows"} ${Math.abs(Number(c.sizeSteps)||1)} size${Math.abs(Number(c.sizeSteps)||1)===1?"":"s"}${player?"":", with tokens resized to match"}`,
-    movementControl:`${f} ft. ${loc(cfg("movementTypes",{})[c.ability||"walk"],c.ability||"walk").toLowerCase()} speed`,
-    advantage:`Advantage on ${(ROLL_TARGETS[c.rollTarget||"attack"]??"rolls").toLowerCase()}`,
-    disadvantage:`Disadvantage on ${(ROLL_TARGETS[c.rollTarget||"attack"]??"rolls").toLowerCase()}`
+    sizeChange:(()=>{const n=Math.abs(Number(c.sizeSteps)||1);const word=["one","two","three"][n-1]??n;
+      if(c.sizeMode==="set")return `${player?"You become":"Becomes"} ${loc(cfg("actorSizes",{})[c.size||"lg"],c.size||"lg")} size${player?"":", with tokens resized to match"}`;
+      const shrink=Number(c.sizeSteps)<0||c.sizeMode==="shrink";
+      return player?`You ${shrink?"shrink":"grow"} ${word} size${n>1?"s":""} ${shrink?"smaller":"larger"}`:`${shrink?"Shrinks":"Grows"} ${n} size${n===1?"":"s"}, with tokens resized to match`;})(),
+    movementControl:`${/^-/.test(f)?f:`+${f}`} ft. ${moveWord(c.ability||"walk")} speed`,
+    advantage:`Advantage on ${rollWords(c)}`,
+    disadvantage:`Disadvantage on ${rollWords(c)}`
   }[c.effect]??(RULE_CATEGORIES[c.ruleCategory]?.effects?.[c.effect]??"This effect");
   const parts=[effect];
   if(c.ruleCategory==="defensive"){
     const trig=c.trigger||"damage";
     let t;
     if(["saveBonus","saveAdvantage"].includes(c.effect))t={saveAgainstMagic:"against spells and magical effects",saveAgainstSpell:"against spells"}[trig]??"";
-    else if(c.effect==="acBonus")t={melee:"against melee attacks",ranged:"against ranged attacks",spell:"against spell attacks"}[trig]??"against attacks";
+    else if(c.effect==="acBonus")t={melee:"against melee attacks",ranged:"against ranged attacks",spell:"against spell attacks"}[trig]??(player?"":"against attacks");
     else t=(player&&trig==="damage")?"":String(triggerOptions(c.effect)[trig]??"").toLowerCase();
     if(t)parts.push(t);
   }
@@ -115,7 +132,7 @@ export function componentLine(c, { spellName }={}) {
   const ft = v => `${Number(v) || 0} ft.`;
   switch ( c.type ) {
     case "movement": {
-      const m = loc(cfg("movementTypes", {})[c.movementType], c.movementType).toLowerCase();
+      const m = moveWord(c.movementType);
       return c.mode === "override" ? `You have a ${m} speed of ${ft(c.value)}` : `Your ${m} speed increases by ${ft(c.value)}`;
     }
     case "sense": {
