@@ -230,7 +230,7 @@ export const HELP_SECTIONS = [
     id: "native", title: "Works With or Without Item Builder", icon: "fa-layer-group",
     body: `
       <p>Rules marked <span class="ibh-badge native">Built into item</span>, plus movement, senses, ability scores, skills, spells, reactions, Half-ASI and size are stored in the item's own D&amp;D5e data. They keep working with Item Builder disabled, in worlds without it, and alongside Midi-QOL, DAE, AC5e and similar modules.</p>
-      <p>Rules marked <span class="ibh-badge runtime">Automated</span> (usually those limited to certain creatures or sources) and token resizing need Item Builder enabled. For advantage and disadvantage rules, the item also carries Midi-QOL conditions, so Midi applies them in its own roll dialogs.</p>`
+      <p>Rules marked <span class="ibh-badge runtime">Automated</span> (usually those limited to certain creatures or sources), <a data-jump="requirement">Use Requirements</a>, token resizing, and the tier changes (rarity and the Item Properties list updating when you change tiers) need Item Builder enabled. The description an item already has stays readable without it. For advantage and disadvantage rules, the item also carries Midi-QOL conditions, so Midi applies them in its own roll dialogs.</p>`
   },
   {
     id: "troubleshooting", title: "Troubleshooting", icon: "fa-screwdriver-wrench",
