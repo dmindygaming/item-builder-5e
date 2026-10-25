@@ -72,7 +72,21 @@ export function ruleSentence(c, { player=false }={}){
     const bits=[];if(list.length)bits.push(listText(list));if(sub)bits.push(`${sub} subtype`);
     return bits.length?`the ${label.split(/\s*[/(]/)[0].trim().toLowerCase()} is ${bits.join(", ")}`:"";
   };
-  const filters=[who(p.source,types("sourceTypes"),c.sourceSubtype),who(p.target,types("targetTypes"),c.targetSubtype)].filter(Boolean);
+  let filters;
+  if(player){
+    // Players read "only against fiends", "only for attacks named “Bite”".
+    const self=selfSide(c);
+    const other=self==="source"?"target":"source";
+    const list=(c[`${other}Types`]??[]).map(t=>plural(loc(cfg("creatureTypes",{})[t],t).toLowerCase()));
+    const sub=c[`${other}Subtype`];
+    const kinds=[...list,...(sub?[`${sub} creatures`]:[])];
+    filters=[];
+    if(kinds.length)filters.push(`${c.ruleCategory==="defensive"?"from":"against"} ${listText(kinds)}`);
+    if(String(c.activityName??"").trim())filters.push(`for ${c.ruleCategory==="defensive"?"attacks":"attacks and abilities"} named “${String(c.activityName).trim()}”`);
+    let out=parts.join(" ");
+    return out+(filters.length?`, only ${filters.join(" and ")}.`:".");
+  }
+  filters=[who(p.source,types("sourceTypes"),c.sourceSubtype),who(p.target,types("targetTypes"),c.targetSubtype)].filter(Boolean);
   if(String(c.activityName??"").trim())filters.push(`the attack or ability is named “${String(c.activityName).trim()}”`);
   let out=parts.join(" ");
   out+=filters.length?`, only when ${listText(filters,"and")}.`:(player?".":", always.");
@@ -80,6 +94,9 @@ export function ruleSentence(c, { player=false }={}){
 }
 
 
+
+const PLURAL = { undead: "undead", fey: "fey", monstrosity: "monstrosities", swarm: "swarms" };
+function plural(word) { return PLURAL[word] ?? (word.endsWith("s") ? word : `${word}s`); }
 
 const ORD = n => ["", "1st", "2nd", "3rd"][n] ?? `${n}th`;
 const abilityName = k => loc(cfg("abilities", {})[k], k);
@@ -127,8 +144,18 @@ export function componentLine(c, { spellName }={}) {
       return reactionSummary(c, abilityName).replace(/\.$/, "").replace(/^Reaction —/, `${c.name || "Reaction"} (Reaction) —`);
     case "reference":
       return String(c.text ?? "").trim();
-    case "conditional":
+    case "conditional": {
+      if ( c.effect === "statusEffect" ) {
+        if ( !c.status ) return "";
+        const st = (globalThis.CONFIG?.statusEffects ?? []).find(e => e.id === c.status);
+        const name = st ? loc(st.name ?? st.label, c.status) : c.status;
+        return c.appliesTo === "target"
+          ? `Its attacks and effects can make the target ${name.toLowerCase()}`
+          : `You are ${name.toLowerCase()} while you have it`;
+      }
+      if ( c.effect === "activeEffect" ) return "";
       return ruleSentence(c, { player: true }).replace(/\.$/, "");
+    }
     default:
       return "";
   }
@@ -179,7 +206,8 @@ export async function refreshItemDescription(item) {
     try { spellNames[c.spellUuid] = (await fromUuid(c.spellUuid))?.name ?? ""; } catch { /* missing spell */ }
   }
   const tiers = flags.tiers ?? [];
-  const tierName = tiers.length > 1 ? (tiers[tier - 1]?.name ?? "") : "";
+  const tiered = tiers.length > 1 && (flags.components ?? []).some(c => (Number(c.tier) || 1) > 1);
+  const tierName = tiered ? (tiers[tier - 1]?.name ?? "") : "";
   const current = item._source?.system?.description?.value ?? "";
   const gm = withoutProperties(current);
   const list = propertiesHtml(propertyLines(flags, tier, { spellNames }), tierName);
