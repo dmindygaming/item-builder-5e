@@ -2,6 +2,11 @@
 
 All notable changes to Item Builder 5e.
 
+## v1.0.5 Rarity grows with tiers
+
+- On the Progression tab, every tier after the first has a **Rarity at this tier** choice. When the GM tiers the item up, its rarity changes to that value (for example Uncommon → Rare → Very Rare); **No change** keeps the rarity from the tier before. Lowering the tier sets the rarity back. The first tier uses the rarity from the Basics tab.
+- The Unlock Summary shows each tier's new rarity.
+
 ## v1.0.4 Item Properties in the description
 
 - The item's description now lists its **Item Properties** below your own text, in plain language for players: enhancement bonuses ("+1 bonus to attack and damage rolls made with this weapon"), speeds, senses, ability scores, skills, Half-ASI, granted spells with their uses, reactions, rules text, and every rule effect ("Resistance to poison damage", "Deals an extra 2d6 radiant damage, only when the target is undead").
