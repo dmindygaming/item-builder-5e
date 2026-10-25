@@ -2,6 +2,11 @@
 
 All notable changes to Item Builder 5e.
 
+## v1.0.3 Granted spells follow tiers
+
+- Fixed: a granted spell from a higher tier stayed on the item after the tier was lowered. Spell components now behave like reactions: their Cast activity appears when the tier is reached and is removed when the tier drops (or the Spell component is deleted), keeping its spent uses rule as before.
+- Tested in a live world (Foundry 14.369, D&D5e 6.0.6, Midi-QOL, DAE, AC5e): character traits, native and conditional rule effects, saves against spells and magic, damage application (resistance, immunity, vulnerability, ignore resistance, caused vulnerability, attack-name filters), cover, healing and temporary HP, Hit Dice, reactions, granted spells, uses, tiers, Half-ASI, Change Size with token resizing, attunement, re-saving, and a full Midi-QOL attack workflow.
+
 ## v1.0.2 Guide navigation fix
 
 - Fixed: clicking a contents entry or an in-text link in the Item Builder Guide did nothing. The guide's text now scrolls inside its own panel, and every link jumps straight to its section (checked in Foundry 14). Any section, including the last ones, can be brought to the top.
