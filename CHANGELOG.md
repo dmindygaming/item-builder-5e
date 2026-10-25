@@ -2,6 +2,17 @@
 
 All notable changes to Item Builder 5e.
 
+## v1.0.6 Use requirements, Devil's Sight
+
+- **Use Requirement** (Components → Restrictions): choose who the item is meant for — a specific class (any of several), a minimum ability score, or a minimum character level — and what happens to anyone else:
+  - they cannot attune to it (e.g. "Requires attunement by a wizard or sorcerer"), or cannot equip or wield it;
+  - they take damage when they try to attune or equip it, optionally also failing;
+  - disadvantage on attack rolls made with it, or on ability checks and saving throws (all or one ability);
+  - their speed is reduced (e.g. heavy armor without Strength 15);
+  - or rules text for the GM.
+  Item Builder checks the character when they attune, equip or use the item, and again when their class, level or ability scores change. Each requirement is listed in the item's description.
+- **Devil's Sight** in Senses: darkvision at the chosen range, noted as Devil's Sight under the character's special senses, and described as seeing normally in magical and nonmagical darkness.
+
 ## v1.0.5 Rarity grows with tiers
 
 - On the Progression tab, every tier after the first has a **Rarity at this tier** choice. When the GM tiers the item up, its rarity changes to that value (for example Uncommon → Rare → Very Rare); **No change** keeps the rarity from the tier before. Lowering the tier sets the rarity back. The first tier uses the rarity from the Basics tab.
