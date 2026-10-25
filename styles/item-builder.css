@@ -301,3 +301,9 @@
 .item-builder-5e-help .ibh-section.ibh-flash { animation: ibh-flash 1.4s ease-out; }
 @media (max-width: 700px) { .item-builder-5e-help .ibh-root { grid-template-columns: 1fr; } .item-builder-5e-help .ibh-toc { max-height: 35%; border-right: 0; border-bottom: 1px solid #7775; } }
 .item-builder-5e-help .ibh-body a[data-jump]:not(.ibh-top) { color: var(--color-text-hyperlink, #2a5aa8); text-decoration: underline; text-underline-offset: 2px; }
+
+/* v1.0.4 Item Properties list in item descriptions (hidden in chat cards) */
+.ib-properties h3 { margin: .8em 0 .3em; }
+.ib-properties .ib-tier { font-weight: 400; opacity: .7; font-size: .85em; }
+.ib-properties ul { margin-top: .2em; }
+.chat-message .ib-properties, .chat-popout .ib-properties { display: none; }
