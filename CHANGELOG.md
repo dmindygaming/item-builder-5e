@@ -2,6 +2,10 @@
 
 All notable changes to Item Builder 5e.
 
+## v1.0.7 Guide update
+
+- The guide's "Works With or Without Item Builder" section now lists Use Requirements and the tier changes (rarity and the Item Properties list) among the features that need Item Builder enabled.
+
 ## v1.0.6 Use requirements, Devil's Sight
 
 - **Use Requirement** (Components → Restrictions): choose who the item is meant for — a specific class (any of several), a minimum ability score, or a minimum character level — and what happens to anyone else:
