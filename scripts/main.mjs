@@ -1,7 +1,7 @@
 import {
   MODULE_ID, effectChangesUpdate, halfAsiChange, movementKey, normalizeAttunement,
   USES_MODES, magicalPropertyUpdate, readEffectChanges, readRarity, stripBuilderDescription, usesFormula, usesLabel, usesSetting, remapChangeKey, resolveUuid, resolveUuidSync, senseKey, statusEffectList,
-  withEffectChanges, writeRarity
+  rarityForTier, withEffectChanges, writeRarity
 } from "./compat.mjs";
 import { ItemExportApp, ItemImportApp, exportItemsToFile } from "./portability.mjs";
 import { applyNativeAsi, halfAsiHandled, halfAsiIsNative, upgradeHalfAsi } from "./asi.mjs";
@@ -16,7 +16,7 @@ import {
   itemHasOwnUse, ruleFromComponent, sizeAfter, ruleHandling, syncRuleEffects
 } from "./rules.mjs";
 
-const MODULE_VERSION = "1.0.4";
+const MODULE_VERSION = "1.0.5";
 const { ApplicationV2, DialogV2 } = foundry.applications.api;
 
 const esc = v => foundry.utils.escapeHTML(String(v ?? ""));
@@ -208,7 +208,7 @@ class ItemBuilder5e extends ApplicationV2 {
     this.builderData.description = ib.description ?? (item.system?.description?.value
       ? withoutProperties(String(item.system.description.value)).replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]+>/g, "")
       : "");
-    this.builderData.rarity = readRarity(item.system);
+    this.builderData.rarity = ib.baseRarity ?? readRarity(item.system);
     // Read the stored value: D&D5e blanks the prepared one on items not marked Magical.
     this.builderData.attunement = normalizeAttunement(item._source?.system?.attunement ?? item.system?.attunement, item._source?.system?.attuned ?? item.system?.attuned).attunement;
     this.builderData.value = String(item.system?.price?.value ?? item.system?.price ?? 0);
@@ -615,7 +615,7 @@ class ItemBuilder5e extends ApplicationV2 {
     b.description=v("description")??b.description;
     b.currentTier=Number(v("currentTier")??b.currentTier)||1;
 
-    b.tiers.forEach((t,i)=>{t.name=v(`tier.${i}.name`)??t.name;t.gmNote=v(`tier.${i}.gmNote`)??t.gmNote??"";});
+    b.tiers.forEach((t,i)=>{t.name=v(`tier.${i}.name`)??t.name;t.gmNote=v(`tier.${i}.gmNote`)??t.gmNote??"";if(i>0)t.rarity=v(`tier.${i}.rarity`)??t.rarity??"";});
     b.progressionNotes=v("progressionNotes")??b.progressionNotes??"";
 
     b.components.forEach((c,i)=>{
@@ -990,12 +990,13 @@ class ItemBuilder5e extends ApplicationV2 {
     return `<div class="section-head"><div><h2>Progression</h2><p>Create Dormant/Awakened/Exalted items or any other tier structure.</p></div><button type="button" data-add-tier><i class="fa-solid fa-plus"></i> Add Tier</button></div>
       <div class="callout progression"><i class="fa-solid fa-hand-pointer"></i><div><strong>How to progress the item manually:</strong><br>1. Create the item.<br>2. Open that item's sheet.<br>3. Click the <b>Item Builder Tier</b> button at the top of the sheet.<br>4. Choose the new tier.<br>5. Click <b>Apply</b>.<br><br>Any components whose <b>Begins at</b> tier has now been reached will activate.</div></div>
       <div class="tier-list">${b.tiers.map((t,i)=>`<div class="ib91-tier"><div class="tier-row"><span>${i+1}</span><input name="tier.${i}.name" value="${esc(t.name)}"><button type="button" data-remove-tier="${i}" title="Remove tier"><i class="fa-solid fa-trash"></i></button></div>
+        ${b.category==="feat"?"":`<label class="ib93-rarity">${i===0?`Rarity <span class="muted">${esc(loc(cfg("itemRarity",cfg("rarities",{}))[b.rarity],b.rarity)||"none")} (set on Basics)</span>`:`Rarity at this tier ${this._tip("Raises the item's rarity when it reaches this tier. No change keeps the rarity from the tier before.")}<select name="tier.${i}.rarity"><option value="">No change</option>${selectOptions(cfg("itemRarity",cfg("rarities",{})),t.rarity??"",false)}</select>`}</label>`}
         <label class="ib91-note"><i class="fa-solid fa-eye-slash"></i> ${i===0?"Starting state":"How it reaches this tier"} <span class="muted">(GM only)</span><textarea name="tier.${i}.gmNote" rows="2" placeholder="${i===0?"e.g. Found dormant in the lich's vault; the wielder doesn't know its true name.":"e.g. Awakens when the wielder lands the killing blow on a dragon."}">${esc(t.gmNote??"")}</textarea></label></div>`).join("")}</div>
       <label class="ib91-note"><i class="fa-solid fa-eye-slash"></i> Progression Notes <span class="muted">(GM only)</span> ${this._tip("Your own reminders about how this item grows. Shown only to GMs: here and in the tier window on the item sheet. Players never see it.")}
         <textarea name="progressionNotes" rows="4" placeholder="e.g. Ties to Kaelen's backstory. Reveal the second tier's name only after the temple session.">${esc(b.progressionNotes??"")}</textarea></label>
       <label>Starting Tier<select name="currentTier">${tierOptions(b.tiers,b.currentTier)}</select></label>
       <h3>Unlock Summary</h3>
-      ${b.tiers.map((t,i)=>{const list=b.components.filter(c=>Number(c.tier)===i+1);return `<div class="tier-summary"><strong>${esc(t.name)}</strong>${t.gmNote?`<p class="ib91-summary-note"><i class="fa-solid fa-eye-slash"></i> ${esc(t.gmNote)}</p>`:""}${list.length?`<ul>${list.map(c=>`<li>${esc(c.name)}</li>`).join("")}</ul>`:"<p>No new components.</p>"}</div>`}).join("")}`;
+      ${b.tiers.map((t,i)=>{const list=b.components.filter(c=>Number(c.tier)===i+1);return `<div class="tier-summary"><strong>${esc(t.name)}</strong>${i>0&&t.rarity?` <span class="muted">→ ${esc(loc(cfg("itemRarity",cfg("rarities",{}))[t.rarity],t.rarity))}</span>`:""}${t.gmNote?`<p class="ib91-summary-note"><i class="fa-solid fa-eye-slash"></i> ${esc(t.gmNote)}</p>`:""}${list.length?`<ul>${list.map(c=>`<li>${esc(c.name)}</li>`).join("")}</ul>`:"<p>No new components.</p>"}</div>`}).join("")}`;
   }
 
   _previewText(c){
@@ -1142,7 +1143,7 @@ class ItemBuilder5e extends ApplicationV2 {
       data.system.prerequisites??={};
       data.system.prerequisites.level=b.levelRequirement===""?null:Math.max(1,Math.min(20,Number(b.levelRequirement)||1));
     }else{
-      writeRarity(data.system,b.rarity||"");
+      writeRarity(data.system,rarityForTier(b.rarity||"",b.tiers,b.currentTier));
       const att=normalizeAttunement(b.attunement,data.system.attuned);
       data.system.attunement=att.attunement;
       if(!att.attunement)data.system.attuned=false;
@@ -1169,7 +1170,7 @@ class ItemBuilder5e extends ApplicationV2 {
     let nativeAsi={ids:{},removed:[]};
     if(data.type==="feat")nativeAsi=applyNativeAsi(data,b.components,Object.keys(cfg("abilities",{})),()=>foundry.utils.randomID());
     data.flags[MODULE_ID]={
-      schemaVersion:13,spellGrants:data.flags?.[MODULE_ID]?.spellGrants??"",nativeAsiIds:nativeAsi.ids,nativePatches:data.flags?.[MODULE_ID]?.nativePatches??"",reactions:data.flags?.[MODULE_ID]?.reactions??"",progressionNotes:b.progressionNotes||"",currentTier:b.currentTier,tiers:foundry.utils.deepClone(b.tiers),
+      schemaVersion:13,spellGrants:data.flags?.[MODULE_ID]?.spellGrants??"",nativeAsiIds:nativeAsi.ids,nativePatches:data.flags?.[MODULE_ID]?.nativePatches??"",reactions:data.flags?.[MODULE_ID]?.reactions??"",progressionNotes:b.progressionNotes||"",baseRarity:b.rarity||"",currentTier:b.currentTier,tiers:foundry.utils.deepClone(b.tiers),
       components:foundry.utils.deepClone(b.components),
       rules:b.components.filter(c=>c.type==="conditional").map(c=>this._rule(c)),
       category:b.category,baseUuid:b.baseUuid,enhancementBonus:Number(b.enhancementBonus)||0,
@@ -1302,6 +1303,12 @@ async function setTier(item,newTier){
   if(updates.length)await item.updateEmbeddedDocuments("ActiveEffect",updates);
 
   await syncSpellGrants(item);
+  // Rarity follows the tier when the GM set one for it.
+  const base=item.getFlag(MODULE_ID,"baseRarity");
+  if(base!==undefined&&item.type!=="feat"){
+    const rarity=rarityForTier(base,tiers,newTier);
+    if(rarity!==readRarity(item._source?.system)){const sys={};writeRarity(sys,rarity);await item.update({system:sys});}
+  }
   await syncRuleEffects(item);
   await syncReactions(item);
   await refreshItemDescription(item);

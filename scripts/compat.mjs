@@ -406,3 +406,15 @@ export function magicalPropertyUpdate(item) {
   if ( list.includes("mgc") ) return null;
   return { "system.properties": [...list, "mgc"] };
 }
+
+/**
+ * The item's rarity at a tier: the Basics rarity, raised by the most recent tier (up to and
+ * including `tier`) that sets one. Tiers left on "no change" keep the rarity they inherit.
+ */
+export function rarityForTier(baseRarity, tiers=[], tier=1) {
+  let rarity = baseRarity ?? "";
+  for ( let i = 1; i < Math.min(Number(tier) || 1, tiers.length); i++ ) {
+    if ( tiers[i]?.rarity ) rarity = tiers[i].rarity;
+  }
+  return rarity;
+}

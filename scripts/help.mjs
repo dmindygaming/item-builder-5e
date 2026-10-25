@@ -186,6 +186,7 @@ export const HELP_SECTIONS = [
         <dt>Tiers</dt><dd>Name each tier (Dormant, Awakened, Exalted…). <b>Add Tier</b> adds one; the trash button removes one.</dd>
         <dt>Begins at</dt><dd>On every component card: the tier it switches on.</dd>
         <dt>GM-only notes</dt><dd>Under each tier: how the item reaches it (the first tier's note describes its starting state). <b>Progression Notes</b> holds your overall plan. Players never see these in the game screens.</dd>
+        <dt>Rarity at this tier</dt><dd>Under each tier after the first: the rarity the item becomes when it reaches that tier (for example Uncommon → Rare → Very Rare). <b>No change</b> keeps the rarity from the tier before; the first tier uses the rarity on the Basics tab.</dd>
         <dt>Starting Tier</dt><dd>The tier a new item starts at.</dd>
         <dt>Unlock Summary</dt><dd>What each tier unlocks, with your notes.</dd>
       </dl>
