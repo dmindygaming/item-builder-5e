@@ -9,6 +9,7 @@ import { enhanceSearchableSelects } from "./combo.mjs";
 import { refreshItemDescription, ruleSentence, selfSide, withoutProperties } from "./describe.mjs";
 import { ItemBuilderHelp, registerHelpMenu } from "./help.mjs";
 import { registerTokenSizeHooks } from "./tokensize.mjs";
+import { CLASS_CHOICES, REQUIREMENT_KINDS, REQUIREMENT_PENALTIES, registerRequirementHooks, requirementLine, syncRequirementEffects } from "./requirements.mjs";
 import { REACTION_EFFECTS, REACTION_TRIGGERS, reactionSummary, syncReactions } from "./reactions.mjs";
 import {
   DAMAGE_RULES, DEFENSIVE_TRIGGERS, FORMULA_RULES, OFFENSIVE_DAMAGE_RULES, ROLL_TARGETS, RULE_CATEGORIES,
@@ -16,7 +17,7 @@ import {
   itemHasOwnUse, ruleFromComponent, sizeAfter, ruleHandling, syncRuleEffects
 } from "./rules.mjs";
 
-const MODULE_VERSION = "1.0.5";
+const MODULE_VERSION = "1.0.6";
 const { ApplicationV2, DialogV2 } = foundry.applications.api;
 
 const esc = v => foundry.utils.escapeHTML(String(v ?? ""));
@@ -549,7 +550,7 @@ class ItemBuilder5e extends ApplicationV2 {
       this.render({force:true});
     }));
     el.querySelectorAll('select[name$=".rollTarget"],select[name$=".appliesTo"]').forEach(sel=>sel.addEventListener("change",()=>{this._capture();this.render({force:true});}));
-    el.querySelectorAll('select[name$=".reactionEffect"],select[name$=".trigger"],select[name$=".usesMode"],select[name$=".sizeMode"]').forEach(sel=>sel.addEventListener("change",()=>{this._capture();this.render({force:true});}));
+    el.querySelectorAll('select[name$=".reactionEffect"],select[name$=".trigger"],select[name$=".usesMode"],select[name$=".sizeMode"],select[name$=".requireKind"],select[name$=".penalty"]').forEach(sel=>sel.addEventListener("change",()=>{this._capture();this.render({force:true});}));
     el.querySelectorAll('select[name$=".selectionMode"]').forEach(sel=>sel.addEventListener("change",()=>{this._capture();this.render({force:true});}));
 
     el.querySelectorAll("[data-add-component]").forEach(btn=>btn.addEventListener("click",e=>{
@@ -632,6 +633,11 @@ class ItemBuilder5e extends ApplicationV2 {
         if(abilityKeys.some(k=>checked(`c.${i}.allowedAbility.${k}`)!==undefined))c.allowedAbilities=abilityKeys.filter(k=>checked(`c.${i}.allowedAbility.${k}`));
       }
       if(c.type==="reference")c.text=v(`c.${i}.text`)??c.text;
+      if(c.type==="requirement"){
+        for(const k of ["requireKind","ability","minimum","penalty","penaltyAbility","formula","damageType","text"])c[k]=v(`c.${i}.${k}`)??c[k];
+        const b2=checked(`c.${i}.blocks`); if(b2!==undefined)c.blocks=b2;
+        const ck=Object.keys(CLASS_CHOICES); if(ck.some(k=>checked(`c.${i}.class.${k}`)!==undefined))c.classes=ck.filter(k=>checked(`c.${i}.class.${k}`));
+      }
       if(c.type==="reaction"){
         for(const k of ["trigger","triggerText","reactionEffect","formula","damageType","saveAbility","saveDC","onSave","usesMode","usesCount","usesAbility","recovery","text"])c[k]=v(`c.${i}.${k}`)??c[k];
       }
@@ -827,6 +833,7 @@ class ItemBuilder5e extends ApplicationV2 {
     if(type==="ability")Object.assign(c,{name:"Ability Score",ability:"str",mode:"add",value:"2"});
     if(type==="halfAsi")Object.assign(c,{name:"2024 Half-ASI",selectionMode:"choice",ability:"str",allowedAbilities:Object.keys(cfg("abilities",{})),selectedAbility:""});
     if(type==="reference")Object.assign(c,{name:"Special Rule",text:""});
+    if(type==="requirement")Object.assign(c,{name:"Requirement",requireKind:"class",classes:[],ability:"str",minimum:"15",penalty:"blockAttune",penaltyAbility:"",formula:"",damageType:"psychic",blocks:false,text:""});
     if(type==="reaction")Object.assign(c,{name:"Reaction",trigger:"hit",triggerText:"",reactionEffect:"acBonus",formula:"2",damageType:"any",saveAbility:"dex",saveDC:"13",onSave:"half",usesMode:"unlimited",usesCount:"1",usesAbility:"cha",recovery:"lr",text:""});
     if(type==="spell")Object.assign(c,{name:"Granted Spell",spellUuid:"",displayInSpellbook:true,castingAbility:"",level:"",usesMode:"unlimited",usesCount:"1",usesAbility:"cha",recovery:"lr"});
     if(type==="skill")Object.assign(c,{name:"Skill Training",skill:"acr",proficiency:"1",ability:""});
@@ -844,6 +851,9 @@ class ItemBuilder5e extends ApplicationV2 {
         <div class="ib90-group"><h4>Actions</h4><div class="ib90-buttons">
           ${btn("spell","fa-wand-sparkles","Spell")}${btn("reaction","fa-bolt-lightning","Reaction")}${btn("reference","fa-align-left","Rules Text")}
         </div></div>
+        <div class="ib90-group"><h4>Restrictions</h4><div class="ib90-buttons">
+          ${btn("requirement","fa-user-lock","Use Requirement")}
+        </div></div>
         <div class="ib90-group"><h4>Rule Effects</h4><div class="ib90-buttons">
           ${btn("offensive","fa-burst","Offensive")}${btn("defensive","fa-shield-halved","Defensive")}${btn("healing","fa-heart-pulse","Healing / Recovery")}${btn("utility","fa-wand-magic-sparkles","Utility / Control")}
         </div></div>
@@ -857,11 +867,30 @@ class ItemBuilder5e extends ApplicationV2 {
   _component(c,i){
     let body="";
     if(c.type==="movement")body=`<div class="grid2"><label>Movement Type<select name="c.${i}.movementType">${movementOptions(c.movementType)}</select></label><label>Operation<select name="c.${i}.mode"><option value="add" ${c.mode==="add"?"selected":""}>Increase by</option><option value="override" ${c.mode==="override"?"selected":""}>Grant / Set to</option></select></label><label>Feet<input type="number" name="c.${i}.value" value="${esc(c.value)}"></label>${this._activation(c,i)}</div>`;
-    if(c.type==="sense")body=`<div class="grid2"><label>Sense<select name="c.${i}.sense">${selectOptions({darkvision:"Darkvision",blindsight:"Blindsight",tremorsense:"Tremorsense",truesight:"Truesight"},c.sense,false)}</select></label><label>Operation<select name="c.${i}.mode"><option value="upgrade" ${c.mode==="upgrade"?"selected":""}>Grant / Minimum Range</option><option value="add" ${c.mode==="add"?"selected":""}>Increase Existing Range by</option><option value="override" ${c.mode==="override"?"selected":""}>Set Range to</option></select></label><label>Range (feet)<input type="number" min="0" name="c.${i}.value" value="${esc(c.value)}"></label>${this._activation(c,i)}</div>`;
+    if(c.type==="sense")body=`<div class="grid2"><label>Sense<select name="c.${i}.sense">${selectOptions({darkvision:"Darkvision",blindsight:"Blindsight",tremorsense:"Tremorsense",truesight:"Truesight",devilsSight:"Devil's Sight"},c.sense,false)}</select></label><label>Operation<select name="c.${i}.mode"><option value="upgrade" ${c.mode==="upgrade"?"selected":""}>Grant / Minimum Range</option><option value="add" ${c.mode==="add"?"selected":""}>Increase Existing Range by</option><option value="override" ${c.mode==="override"?"selected":""}>Set Range to</option></select></label><label>Range (feet)<input type="number" min="0" name="c.${i}.value" value="${esc(c.value)}"></label>${this._activation(c,i)}</div>`;
     if(c.type==="ability")body=`<div class="grid2"><label>Ability<select name="c.${i}.ability">${abilityOptions(c.ability)}</select></label><label>Operation<select name="c.${i}.mode"><option value="add" ${c.mode==="add"?"selected":""}>Increase by</option><option value="override" ${c.mode==="override"?"selected":""}>Set Score to</option></select></label><label>Value<input type="number" name="c.${i}.value" value="${esc(c.value)}"></label>${this._activation(c,i)}</div>`;
     if(c.type==="halfAsi"){
       const allowed=new Set(c.allowedAbilities??Object.keys(cfg("abilities",{})));
       body=`<div class="grid2"><label>Who Chooses?<select name="c.${i}.selectionMode"><option value="choice" ${c.selectionMode==="choice"?"selected":""}>Player Chooses</option><option value="fixed" ${c.selectionMode==="fixed"?"selected":""}>GM Sets Ability</option></select></label>${c.selectionMode==="fixed"?`<label>Ability<select name="c.${i}.ability">${abilityOptions(c.ability)}</select></label>`:`<fieldset class="ib324-abilities"><legend>Allowed Player Choices</legend>${Object.entries(cfg("abilities",{})).map(([key,value])=>`<label><input type="checkbox" name="c.${i}.allowedAbility.${key}" ${allowed.has(key)?"checked":""}> ${esc(loc(value,key))}</label>`).join("")}</fieldset>`}<label>Increase<input value="+1 (maximum 20)" disabled></label></div>${halfAsiIsNative(c,this._nativeItemType())?`<div class="ib60-handling native"><i class="fa-solid fa-layer-group"></i><div><strong>Built into the feat</strong> — written as D&D5e Ability Score Improvement advancement, so D&D5e asks for (or applies) the +1 when the feat is dropped on a character. Works even with Item Builder disabled.</div></div>`:`<div class="ib60-handling runtime"><i class="fa-solid fa-bolt"></i><div><strong>Applied by Item Builder</strong> — D&D5e advancement cannot wait for a later tier, so this +1 is an Active Effect; the player is prompted when the tier unlocks or the feat is added.</div></div>`}`;
+    }
+    if(c.type==="requirement"){
+      const kind=c.requireKind||"class", pen=c.penalty||"blockAttune";
+      const who=kind==="class"
+        ?`<fieldset class="ib324-abilities"><legend>Classes (any of)</legend>${Object.entries(CLASS_CHOICES).map(([k,l])=>`<label><input type="checkbox" name="c.${i}.class.${k}" ${(c.classes??[]).includes(k)?"checked":""}> ${esc(l)}</label>`).join("")}</fieldset>`
+        :kind==="ability"?`<label>Ability<select name="c.${i}.ability">${abilityOptions(c.ability||"str")}</select></label><label>Minimum Score<input type="number" min="1" max="30" name="c.${i}.minimum" value="${esc(c.minimum)}"></label>`
+        :`<label>Minimum Level<input type="number" min="1" max="20" name="c.${i}.minimum" value="${esc(c.minimum)}"></label>`;
+      const penFields=pen==="damage"?`<label>Damage<input name="c.${i}.formula" value="${esc(c.formula)}" placeholder="4d6"></label><label>Damage Type<select name="c.${i}.damageType">${standardDamageOptions(c.damageType||"psychic")}</select></label><label class="check"><input type="checkbox" name="c.${i}.blocks" ${c.blocks?"checked":""}> They also fail to attune or equip it</label>`
+        :pen==="speed"?`<label>Speed Reduced By (feet)<input type="number" min="5" step="5" name="c.${i}.formula" value="${esc(c.formula||"10")}"></label>`
+        :pen==="disChecks"?`<label>Which Ability<select name="c.${i}.penaltyAbility"><option value="">All checks and saves</option>${abilityOptions(c.penaltyAbility,true).replace('<option value="">—</option>','')}</select></label>`
+        :pen==="note"?`<label>What Happens<input name="c.${i}.text" value="${esc(c.text)}" placeholder="The sword's voice whispers, and they must succeed on a DC 15 Wisdom save"></label>`:"";
+      body=`<div class="grid2">
+        <label>Who Can Use It<select name="c.${i}.requireKind">${selectOptions(REQUIREMENT_KINDS,kind,false)}</select></label>
+        ${who}
+        <label>If Someone Else Uses It<select name="c.${i}.penalty">${selectOptions(REQUIREMENT_PENALTIES,pen,false)}</select></label>
+        ${penFields}
+      </div>
+      <div class="ib60-handling runtime"><i class="fa-solid fa-bolt"></i><div><strong>Applied by Item Builder</strong> — checked against the character when they attune, equip or use the item, and again when their class, level or ability scores change. Always listed in the item's description.</div></div>
+      <p class="ib80-summary"><i class="fa-solid fa-quote-left"></i> ${esc(requirementLine(c))}.</p>`;
     }
     if(c.type==="reaction"){
       const e=c.reactionEffect;
@@ -1002,10 +1031,11 @@ class ItemBuilder5e extends ApplicationV2 {
   _previewText(c){
     const tier=this.builderData.tiers[(Number(c.tier)||1)-1]?.name??`Tier ${c.tier}`;
     if(c.type==="movement")return `${tier}: ${c.mode==="add"?"+":"Set"} ${esc(c.value)} ft. ${esc(loc(cfg("movementTypes",{})[c.movementType],c.movementType))}.`;
-    if(c.type==="sense")return `${tier}: ${c.mode==="add"?"+":""}${esc(c.value)} ft. ${esc({darkvision:"Darkvision",blindsight:"Blindsight",tremorsense:"Tremorsense",truesight:"Truesight"}[c.sense]??c.sense)}.`;
+    if(c.type==="sense")return `${tier}: ${c.mode==="add"?"+":""}${esc(c.value)} ft. ${esc({darkvision:"Darkvision",blindsight:"Blindsight",tremorsense:"Tremorsense",truesight:"Truesight",devilsSight:"Devil's Sight"}[c.sense]??c.sense)}.`;
     if(c.type==="ability")return `${tier}: ${c.mode==="add"?"+":"Set"} ${esc(c.value)} ${esc(loc(cfg("abilities",{})[c.ability],c.ability))}.`;
     if(c.type==="spell"){const s=this.catalog.spells.find(x=>x.uuid===c.spellUuid)??resolveUuidSync(c.spellUuid);return `${tier}: grants ${esc(s?.name??"no spell selected")}.`}
     if(c.type==="reaction")return `${tier}: ${esc(reactionSummary(c,k=>loc(cfg("abilities",{})[k],k)))}`;
+    if(c.type==="requirement")return `${tier}: ${esc(requirementLine(c))}.`;
     if(c.type==="skill"){const sk=cfg("skills",{})[c.skill];const training=String(c.proficiency)==="2"?"Expertise":"Proficiency";const abil=c.ability?` using ${loc(cfg("abilities",{})[c.ability],c.ability)}`:"";return `${tier}: ${training} in ${esc(loc(sk,c.skill))}${esc(abil)}.`}
     if(c.type==="halfAsi")return `${tier}: +1 ${c.selectionMode==="fixed"?esc(loc(cfg("abilities",{})[c.ability],c.ability)):c.selectedAbility?esc(loc(cfg("abilities",{})[c.selectedAbility],c.selectedAbility)):"ability score chosen by the player"} (maximum 20).`;
     if(c.type==="reference")return `${tier}: ${esc(c.name)} — ${esc(c.text||"No rules text entered")}`;
@@ -1050,6 +1080,7 @@ class ItemBuilder5e extends ApplicationV2 {
     if(c.type==="skill")return `${tier} — ${c.name}: ${String(c.proficiency)==="2"?"expertise":"proficiency"} in ${loc(cfg("skills",{})[c.skill],c.skill)}${c.ability?` using ${loc(cfg("abilities",{})[c.ability],c.ability)}`:""}`;
     if(c.type==="spell"){const spell=this.catalog.spells.find(s=>s.uuid===c.spellUuid)??resolveUuidSync(c.spellUuid);return `${tier} — ${c.name}: grants ${spell?.name??"selected spell"}`;}
     if(c.type==="reaction")return `${tier} — ${c.name}: ${reactionSummary(c,k=>loc(cfg("abilities",{})[k],k))}`;
+    if(c.type==="requirement")return `${tier} — ${c.name}: ${requirementLine(c)}`;
     return `${tier} — ${c.name||c.type}`;
   }
 
@@ -1061,7 +1092,11 @@ class ItemBuilder5e extends ApplicationV2 {
     if(c.type==="movement"){
       changes.push({key:movementKey(c.movementType),type:c.mode==="override"?"override":"add",value:String(c.value),priority:20});
     } else if(c.type==="sense"){
-      changes.push({key:senseKey(c.sense),type:c.mode==="override"?"override":c.mode==="add"?"add":"upgrade",value:String(c.value),priority:20});
+      if(c.sense==="devilsSight"){
+        // D&D5e has no Devil's Sight sense: it is darkvision that also works in magical darkness, noted under Special senses.
+        changes.push({key:senseKey("darkvision"),type:c.mode==="override"?"override":c.mode==="add"?"add":"upgrade",value:String(c.value),priority:20});
+        changes.push({key:"system.attributes.senses.special",type:"add",value:`Devil's Sight ${Number(c.value)||120} ft.`,priority:20});
+      } else changes.push({key:senseKey(c.sense),type:c.mode==="override"?"override":c.mode==="add"?"add":"upgrade",value:String(c.value),priority:20});
     } else if(c.type==="ability"){
       changes.push({key:`system.abilities.${c.ability}.value`,type:c.mode==="override"?"override":"add",value:String(c.value),priority:20});
     } else if(c.type==="halfAsi"){
@@ -1214,6 +1249,7 @@ class ItemBuilder5e extends ApplicationV2 {
 
         await syncRuleEffects(item);
         await syncReactions(item);
+        await syncRequirementEffects(item);
         await refreshItemDescription(item);
         ui.notifications.info(`Item Builder: Updated "${item.name}".`);
       }else{
@@ -1221,6 +1257,7 @@ class ItemBuilder5e extends ApplicationV2 {
         await syncSpellGrants(item);
         await syncRuleEffects(item);
         await syncReactions(item);
+        await syncRequirementEffects(item);
         await refreshItemDescription(item);
         ui.notifications.info(`Item Builder: Created "${item.name}".`);
       }
@@ -1311,6 +1348,7 @@ async function setTier(item,newTier){
   }
   await syncRuleEffects(item);
   await syncReactions(item);
+  await syncRequirementEffects(item);
   await refreshItemDescription(item);
   ui.notifications.info(`${item.name}: now ${tiers[newTier-1]?.name??`Tier ${newTier}`}.`);
   item.sheet?.render({force:true});
@@ -1329,6 +1367,7 @@ function openBuilder(){
 Hooks.once("init",()=>{
   registerRuleHooks();
   registerTokenSizeHooks();
+  registerRequirementHooks();
   registerHelpMenu();
   // Retained as a hidden legacy setting so existing worlds do not lose stored configuration.
   // Extra damage now travels through D&D5e's native damage card and application controls.

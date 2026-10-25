@@ -55,6 +55,7 @@ export const HELP_SECTIONS = [
       <ul>
         <li><b>Character Traits</b> — <a data-jump="movement">Movement</a>, <a data-jump="senses">Senses</a>, <a data-jump="ability">Ability Score</a>, <a data-jump="skill">Skill</a>, and <a data-jump="halfasi">2024 Half-ASI</a> (feats only).</li>
         <li><b>Actions</b> — <a data-jump="spell">Spell</a>, <a data-jump="reaction">Reaction</a>, <a data-jump="rulestext">Rules Text</a>.</li>
+        <li><b>Restrictions</b> — <a data-jump="requirement">Use Requirement</a>.</li>
         <li><b>Rule Effects</b> — <a data-jump="offensive">Offensive</a>, <a data-jump="defensive">Defensive</a>, <a data-jump="healing">Healing / Recovery</a>, <a data-jump="utility">Utility / Control</a>.</li>
       </ul>
       <p>Every component card has a name (top of the card), a <b>Begins at</b> tier (see <a data-jump="progression">Progression</a>), a trash button to remove it, and its own settings.</p>`
@@ -67,7 +68,7 @@ export const HELP_SECTIONS = [
   {
     id: "senses", title: "Senses", icon: "fa-eye", parent: "components",
     body: `${where("Components → Character Traits → <b>Senses</b>")}
-      <p>Darkvision, blindsight, tremorsense or truesight: grant a minimum range, increase an existing range, or set it.</p>`
+      <p>Darkvision, blindsight, tremorsense, truesight or <b>Devil's Sight</b>: grant a minimum range, increase an existing range, or set it. Devil's Sight gives darkvision at that range and notes Devil's Sight under the character's special senses (D&amp;D5e has no separate Devil's Sight sense).</p>`
   },
   {
     id: "ability", title: "Ability Score", icon: "fa-dumbbell", parent: "components",
@@ -105,6 +106,16 @@ export const HELP_SECTIONS = [
     id: "rulestext", title: "Rules Text", icon: "fa-align-left", parent: "components",
     body: `${where("Components → Actions → <b>Rules Text</b>")}
       <p>A rule Item Builder doesn't automate, kept with the item's components for reference (for example “you can wield this two-handed weapon in one hand”).</p>`
+  },
+  {
+    id: "requirement", title: "Use Requirement", icon: "fa-user-lock", parent: "components",
+    body: `${where("Components → Restrictions → <b>Use Requirement</b>")}
+      <p>Who the item is meant for, and what happens to anyone else.</p>
+      <dl>
+        <dt>Who Can Use It</dt><dd>A specific class (any of the ones you tick), a minimum ability score (such as Strength 15), or a minimum character level.</dd>
+        <dt>If Someone Else Uses It</dt><dd>They cannot attune to it; they cannot equip or wield it; they take damage when they try (and can also fail); disadvantage on attack rolls made with it; disadvantage on ability checks and saving throws (all, or one ability); their speed is reduced; or rules text only.</dd>
+      </dl>
+      <p>Item Builder checks the character when they attune, equip or use the item, and again when their class, level or ability scores change. The requirement is listed in the item's description.</p>`
   },
   {
     id: "rules", title: "Rule Effects: How They Work", icon: "fa-sliders",

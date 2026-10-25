@@ -9,6 +9,7 @@
 import { MODULE_ID, usesLabel } from "./compat.mjs";
 import { RULE_CATEGORIES, ROLL_TARGETS, participantLabels, triggerOptions } from "./rules.mjs";
 import { reactionSummary } from "./reactions.mjs";
+import { requirementLine } from "./requirements.mjs";
 
 const cfg = (path, fallback={}) => foundry.utils.getProperty(globalThis.CONFIG?.DND5E ?? {}, path) ?? fallback;
 const loc = (raw, fallback="") => game.i18n.localize(raw?.label ?? raw ?? fallback) || fallback;
@@ -136,6 +137,7 @@ export function componentLine(c, { spellName }={}) {
       return c.mode === "override" ? `You have a ${m} speed of ${ft(c.value)}` : `Your ${m} speed increases by ${ft(c.value)}`;
     }
     case "sense": {
+      if ( c.sense === "devilsSight" ) return `You can see normally in darkness, both magical and nonmagical, out to ${ft(c.value || 120)} (Devil's Sight)`;
       const s = { darkvision: "Darkvision", blindsight: "Blindsight", tremorsense: "Tremorsense", truesight: "Truesight" }[c.sense] ?? c.sense;
       if ( c.mode === "add" ) return `Your ${s.toLowerCase()} range increases by ${ft(c.value)}`;
       if ( c.mode === "override" ) return `Your ${s.toLowerCase()} range becomes ${ft(c.value)}`;
@@ -161,6 +163,8 @@ export function componentLine(c, { spellName }={}) {
       return reactionSummary(c, abilityName).replace(/\.$/, "").replace(/^Reaction —/, `${c.name || "Reaction"} (Reaction) —`);
     case "reference":
       return String(c.text ?? "").trim();
+    case "requirement":
+      return requirementLine(c);
     case "conditional": {
       if ( c.effect === "statusEffect" ) {
         if ( !c.status ) return "";
