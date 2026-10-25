@@ -307,3 +307,5 @@
 .ib-properties .ib-tier { font-weight: 400; opacity: .7; font-size: .85em; }
 .ib-properties ul { margin-top: .2em; }
 .chat-message .ib-properties, .chat-popout .ib-properties { display: none; }
+.item-builder-5e .ib33-root .ib91-tier .ib93-rarity { display: flex !important; align-items: center; gap: .5rem; margin: 0 0 0 2.7rem !important; font-size: .9em; }
+.item-builder-5e .ib33-root .ib91-tier .ib93-rarity select { width: auto !important; margin: 0 !important; }
