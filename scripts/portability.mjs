@@ -20,6 +20,7 @@ import {
 import { syncRuleEffects } from "./rules.mjs";
 import { upgradeHalfAsi } from "./asi.mjs";
 import { syncReactions } from "./reactions.mjs";
+import { refreshItemDescription } from "./describe.mjs";
 
 const { ApplicationV2, DialogV2 } = foundry.applications.api;
 
@@ -306,8 +307,9 @@ async function upgradeImportedRules(item) {
     if ( (item.getFlag(MODULE_ID, "components") ?? []).some(c => c.type === "reaction") ) await syncReactions(item);
     const html = item.system?.description?.value ?? "";
     const clean = stripBuilderDescription(html);
-    await item.update({ [`flags.${MODULE_ID}.schemaVersion`]: 12, ...(clean !== html ? { "system.description.value": clean } : {}),
+    await item.update({ [`flags.${MODULE_ID}.schemaVersion`]: 13, ...(clean !== html ? { "system.description.value": clean } : {}),
       ...(magicalPropertyUpdate(item) ?? {}) });
+    await refreshItemDescription(item);
   } catch (err) {
     console.warn(`${MODULE_ID} | could not rebuild rules on imported ${item?.name}`, err);
   }

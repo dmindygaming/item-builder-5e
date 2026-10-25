@@ -6,6 +6,7 @@ import {
 import { ItemExportApp, ItemImportApp, exportItemsToFile } from "./portability.mjs";
 import { applyNativeAsi, halfAsiHandled, halfAsiIsNative, upgradeHalfAsi } from "./asi.mjs";
 import { enhanceSearchableSelects } from "./combo.mjs";
+import { refreshItemDescription, ruleSentence, selfSide, withoutProperties } from "./describe.mjs";
 import { ItemBuilderHelp, registerHelpMenu } from "./help.mjs";
 import { registerTokenSizeHooks } from "./tokensize.mjs";
 import { REACTION_EFFECTS, REACTION_TRIGGERS, reactionSummary, syncReactions } from "./reactions.mjs";
@@ -15,7 +16,7 @@ import {
   itemHasOwnUse, ruleFromComponent, sizeAfter, ruleHandling, syncRuleEffects
 } from "./rules.mjs";
 
-const MODULE_VERSION = "1.0.3";
+const MODULE_VERSION = "1.0.4";
 const { ApplicationV2, DialogV2 } = foundry.applications.api;
 
 const esc = v => foundry.utils.escapeHTML(String(v ?? ""));
@@ -71,69 +72,6 @@ function creatureSubtypeOptions(selected="") {
   if(selected)values.add(String(selected).trim().toLowerCase());
   const choices=Object.fromEntries([...values].sort((a,b)=>a.localeCompare(b)).map(value=>[value,value.replace(/\b\w/g,c=>c.toUpperCase())]));
   return `<option value="">Any Subtype</option>${selectOptions(choices,String(selected).toLowerCase(),false)}`;
-}
-
-
-/** Which side of a rule is always the item's own user (its creature filters would only ever test the user). */
-function selfSide(c){
-  if(c.ruleCategory==="healing")return null;
-  const p=participantLabels(c);
-  if(/item user|effect user/i.test(p.source))return "source";
-  if(/item user|effect user/i.test(p.target))return "target";
-  return null;
-}
-
-function listText(items,joiner="or"){
-  if(items.length<2)return items.join("");
-  return `${items.slice(0,-1).join(", ")} ${joiner} ${items.at(-1)}`;
-}
-
-/** One plain-English sentence describing a rule card, for the builder. */
-function ruleSentence(c){
-  const f=String(c.formula??"").trim()||"?";
-  const dt=c.damageType&&c.damageType!=="any"?loc(cfg("damageTypes",{})[c.damageType],c.damageType).toLowerCase():"";
-  const ab=c.ability?loc(cfg("abilities",{})[c.ability],c.ability):"";
-  const effect={
-    extraDamage:`Deals an extra ${f}${dt?` ${dt}`:""} damage`,
-    sameTypeDamage:`Deals an extra ${f} damage when the attack deals ${dt||"the chosen"} damage`,
-    attackBonus:`+${f} to attack rolls`,
-    attackAdvantage:"Advantage on attack rolls",
-    reachBonus:`+${f} ft. reach`,
-    resistance:`Resistance to ${dt||"all"} damage`,
-    immunity:`Immunity to ${dt||"all"} damage`,
-    vulnerability:`Vulnerability to ${dt||"all"} damage`,
-    acBonus:`+${f} AC`,
-    saveBonus:`+${f} to ${ab?`${ab} `:""}saving throws`,
-    saveAdvantage:`Advantage on ${ab?`${ab} `:""}saving throws`,
-    bonusHealing:`Healing you do restores ${f} more`,
-    healingReceived:`Healing you receive changes by ${f}`,
-    temporaryHp:`Grants ${f} temporary hit points`,
-    recoveryBonus:`+${f} per Hit Die spent`,
-    sizeChange:c.sizeMode==="set"?`Becomes ${loc(cfg("actorSizes",{})[c.size||"lg"],c.size||"lg")} size, with tokens resized to match`:`${Number(c.sizeSteps)<0||c.sizeMode==="shrink"?"Shrinks":"Grows"} ${Math.abs(Number(c.sizeSteps)||1)} size${Math.abs(Number(c.sizeSteps)||1)===1?"":"s"}, with tokens resized to match`,
-    movementControl:`${f} ft. ${loc(cfg("movementTypes",{})[c.ability||"walk"],c.ability||"walk").toLowerCase()} speed`,
-    advantage:`Advantage on ${(ROLL_TARGETS[c.rollTarget||"attack"]??"rolls").toLowerCase()}`,
-    disadvantage:`Disadvantage on ${(ROLL_TARGETS[c.rollTarget||"attack"]??"rolls").toLowerCase()}`
-  }[c.effect]??(RULE_CATEGORIES[c.ruleCategory]?.effects?.[c.effect]??"This effect");
-  const parts=[effect];
-  if(c.ruleCategory==="defensive"){
-    const trig=c.trigger||"damage";
-    let t;
-    if(["saveBonus","saveAdvantage"].includes(c.effect))t={saveAgainstMagic:"against spells and magical effects",saveAgainstSpell:"against spells"}[trig]??"";
-    else if(c.effect==="acBonus")t={melee:"against melee attacks",ranged:"against ranged attacks",spell:"against spell attacks"}[trig]??"against attacks";
-    else t=String(triggerOptions(c.effect)[trig]??"").toLowerCase();
-    if(t)parts.push(t);
-  }
-  const types=k=>(c[k]??[]).map(t=>loc(cfg("creatureTypes",{})[t],t).toLowerCase());
-  const p=participantLabels(c);
-  const who=(label,list,sub)=>{
-    const bits=[];if(list.length)bits.push(listText(list));if(sub)bits.push(`${sub} subtype`);
-    return bits.length?`the ${label.split(/\s*[/(]/)[0].trim().toLowerCase()} is ${bits.join(", ")}`:"";
-  };
-  const filters=[who(p.source,types("sourceTypes"),c.sourceSubtype),who(p.target,types("targetTypes"),c.targetSubtype)].filter(Boolean);
-  if(String(c.activityName??"").trim())filters.push(`the attack or ability is named “${String(c.activityName).trim()}”`);
-  let out=parts.join(" ");
-  out+=filters.length?`, only when ${listText(filters,"and")}.`:`, always.`;
-  return out;
 }
 
 
@@ -268,7 +206,7 @@ class ItemBuilder5e extends ApplicationV2 {
     this.builderData.name = item.name ?? this.builderData.name;
     this.builderData.nativeType = item.type ?? this.builderData.nativeType;
     this.builderData.description = ib.description ?? (item.system?.description?.value
-      ? String(item.system.description.value).replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]+>/g, "")
+      ? withoutProperties(String(item.system.description.value)).replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]+>/g, "")
       : "");
     this.builderData.rarity = readRarity(item.system);
     // Read the stored value: D&D5e blanks the prepared one on items not marked Magical.
@@ -766,7 +704,8 @@ class ItemBuilder5e extends ApplicationV2 {
     if(this.activeTab==="basics")return this._basics();
     if(this.activeTab==="components")return this._components();
     if(this.activeTab==="progression")return this._progression();
-    return `<h2>Description</h2><label>Item Description<textarea name="description" rows="22">${esc(this.builderData.description)}</textarea></label>`;
+    return `<h2>Description</h2><label>Item Description<textarea name="description" rows="18">${esc(this.builderData.description)}</textarea></label>
+      <div class="callout"><i class="fa-solid fa-list-check"></i><div><strong>Item Properties are added automatically.</strong> Below your text, the item's description lists what it does at its current tier, such as "+1 bonus to attack and damage rolls" or "You can cast Misty Step". Locked tiers are not listed; when you tier the item up, the new properties appear. The list is not shown in chat cards.</div></div>`;
   }
 
   _baseList() {
@@ -1230,7 +1169,7 @@ class ItemBuilder5e extends ApplicationV2 {
     let nativeAsi={ids:{},removed:[]};
     if(data.type==="feat")nativeAsi=applyNativeAsi(data,b.components,Object.keys(cfg("abilities",{})),()=>foundry.utils.randomID());
     data.flags[MODULE_ID]={
-      schemaVersion:12,spellGrants:data.flags?.[MODULE_ID]?.spellGrants??"",nativeAsiIds:nativeAsi.ids,nativePatches:data.flags?.[MODULE_ID]?.nativePatches??"",reactions:data.flags?.[MODULE_ID]?.reactions??"",progressionNotes:b.progressionNotes||"",currentTier:b.currentTier,tiers:foundry.utils.deepClone(b.tiers),
+      schemaVersion:13,spellGrants:data.flags?.[MODULE_ID]?.spellGrants??"",nativeAsiIds:nativeAsi.ids,nativePatches:data.flags?.[MODULE_ID]?.nativePatches??"",reactions:data.flags?.[MODULE_ID]?.reactions??"",progressionNotes:b.progressionNotes||"",currentTier:b.currentTier,tiers:foundry.utils.deepClone(b.tiers),
       components:foundry.utils.deepClone(b.components),
       rules:b.components.filter(c=>c.type==="conditional").map(c=>this._rule(c)),
       category:b.category,baseUuid:b.baseUuid,enhancementBonus:Number(b.enhancementBonus)||0,
@@ -1274,12 +1213,14 @@ class ItemBuilder5e extends ApplicationV2 {
 
         await syncRuleEffects(item);
         await syncReactions(item);
+        await refreshItemDescription(item);
         ui.notifications.info(`Item Builder: Updated "${item.name}".`);
       }else{
         item=await Item.create(data,{renderSheet:false});
         await syncSpellGrants(item);
         await syncRuleEffects(item);
         await syncReactions(item);
+        await refreshItemDescription(item);
         ui.notifications.info(`Item Builder: Created "${item.name}".`);
       }
       item.sheet?.render({force:true});
@@ -1363,6 +1304,7 @@ async function setTier(item,newTier){
   await syncSpellGrants(item);
   await syncRuleEffects(item);
   await syncReactions(item);
+  await refreshItemDescription(item);
   ui.notifications.info(`${item.name}: now ${tiers[newTier-1]?.name??`Tier ${newTier}`}.`);
   item.sheet?.render({force:true});
 }
@@ -1455,6 +1397,11 @@ async function migrateManagedEffects(){
           await item.update(update);
           if(update["system.properties"])rebuilt++;
         }catch(err){console.warn(`${MODULE_ID} | could not mark ${item.name} magical`,err)}
+      }
+      // 1.0.4: descriptions list what the item does at its current tier.
+      if((Number(item.getFlag(MODULE_ID,"schemaVersion"))||0)<13){
+        try{ await refreshItemDescription(item); await item.setFlag(MODULE_ID,"schemaVersion",13); }
+        catch(err){console.warn(`${MODULE_ID} | could not list properties on ${item.name}`,err)}
       }
       for(const effect of item.effects){
         if(!effect.getFlag(MODULE_ID,"managed"))continue;

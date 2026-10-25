@@ -45,7 +45,7 @@ export const HELP_SECTIONS = [
     id: "description", title: "Description Tab", icon: "fa-align-left",
     body: `
       ${where("Builder → <b>Description</b> tab → Item Description")}
-      <p>The text shown on the item sheet and its chat card. Only what you write appears there; Item Builder does not add a feature list.</p>`
+      <p>Your text for the item. Below it, the item's description automatically lists its <b>Item Properties</b> at the current tier (for example “+1 bonus to attack and damage rolls”, “You can cast Misty Step 5 times per long rest”, a reaction, or a resistance), so players can see what it does. Properties from locked tiers are not listed; when you raise the tier, they appear. Chat cards show only your text.</p>`
   },
   {
     id: "components", title: "Components Tab", icon: "fa-puzzle-piece",
@@ -191,7 +191,7 @@ export const HELP_SECTIONS = [
       </dl>
       <h4>Change an item's tier</h4>
       ${where("Item sheet → <b>Item Builder Tier</b> button in the header (shows the current tier number) → choose → <b>Apply</b>")}
-      <p>The tier window also shows your GM notes, so you can check your plan before applying it.</p>`
+      <p>The tier window also shows your GM notes, so you can check your plan before applying it. Applying a tier updates the item's <a data-jump="description">Item Properties</a> list.</p>`
   },
   {
     id: "sheet", title: "Item Sheet Buttons", icon: "fa-window-maximize",
