@@ -2,6 +2,10 @@
 
 All notable changes to Item Builder 5e.
 
+## v1.1.4 Extra damage without a damage type
+
+- Describe It reads extra damage that names no type ("Does an additional 3d6 damage against humanoids", "adds 1d4 damage") as damage of the weapon's own type, taken from the base weapon (also when the base weapon is set in the same description). With no base weapon it uses Force and says so, so you can change it on the card.
+
 ## v1.1.3 Describe It finds the base item anywhere
 
 - The base weapon, armor or shield is found wherever the description first names it, not only at the very start: "A longsword that deals an extra 1d6 fire damage", "Base weapon: longsword", "Weapon: Longsword", "The Frostbrand is a greatsword".
