@@ -48,7 +48,7 @@ function sentences(text, tierNames) {
       const t = tierOf(head[1]);
       if ( t ) { tier = t; line = (head[3] ?? "").trim(); if ( !line ) continue; }
     }
-    const parts = line.split(/(?<=[.!?;])\s+(?=[A-Z("'])/);
+    const parts = line.split(/(?<=[.!?;])\s+(?=[A-Z("'+\d])/);
     for ( const p of parts ) {
       const s = p.trim();
       if ( !s ) continue;
@@ -172,7 +172,7 @@ export function parseDescription(text, ctx={}) {
   const minor = /^(?:of|the|a|an|and|or|in|on|to|with)$/i;
   const capitalised = words.filter(w => !minor.test(w)).filter(w => /^[A-Z]/.test(w)).length;
   if ( list.length > 1 && first && words.length <= 6 && capitalised >= Math.ceil(words.filter(w => !minor.test(w)).length / 2)
-    && !/\d|\b(?:cast|you|your|has|have|is|are|can)\b|[(),]/i.test(first) ) {
+    && !/\d|\b(?:cast|you|your|has|have|is|are|can|named|called|known as)\b|[(),+]/i.test(first) ) {
     findings.push({ label: `Name: ${first}`, tier: 1, sentence: list[0].text, basics: { name: first } });
     list.shift();
   }
