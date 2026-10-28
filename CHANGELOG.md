@@ -2,6 +2,12 @@
 
 All notable changes to Item Builder 5e.
 
+## v1.0.8 Light sources, Fighting Styles
+
+- **Light** (Components → Actions): makes the item a light source with bright and dim radius, color and animation. The item gets an activity that turns the light on or off (an action, a bonus action, or no action), and it can start lit. While lit and equipped, the owner's tokens shed the light; their normal light returns when it goes out or the item is unequipped.
+- **Fighting Style** (Components → Character Traits): grant a Fighting Style, either one the GM picks or the player's choice (from the styles you tick, or from every Fighting Style found). On a tier-1 feat this is D&D5e advancement, so D&D5e adds the style or asks the player when the feat is dropped on a character; on other items or higher tiers, Item Builder adds it (asking the player when it's their choice) and removes it with the item.
+- Both appear in the item's Item Properties description and in the guide.
+
 ## v1.0.7 Guide update
 
 - The guide's "Works With or Without Item Builder" section now lists Use Requirements and the tier changes (rarity and the Item Properties list) among the features that need Item Builder enabled.
