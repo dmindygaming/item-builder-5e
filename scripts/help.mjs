@@ -58,7 +58,24 @@ export const HELP_SECTIONS = [
         <li><b>Restrictions</b> — <a data-jump="requirement">Use Requirement</a>.</li>
         <li><b>Rule Effects</b> — <a data-jump="offensive">Offensive</a>, <a data-jump="defensive">Defensive</a>, <a data-jump="healing">Healing / Recovery</a>, <a data-jump="utility">Utility / Control</a>.</li>
       </ul>
-      <p>Every component card has a name (top of the card), a <b>Begins at</b> tier (see <a data-jump="progression">Progression</a>), a trash button to remove it, and its own settings.</p>`
+      <p>Every component card has a name (top of the card), a <b>Begins at</b> tier (see <a data-jump="progression">Progression</a>), a trash button to remove it, and its own settings.</p>
+      <p>Rather than adding them one by one, you can write the item out in plain English and let <a data-jump="describe">Describe It</a> suggest the components.</p>`
+  },
+  {
+    id: "describe", title: "Describe It", icon: "fa-feather-pointed", parent: "components",
+    body: `${where("Builder → <b>Components</b> tab → <b>Describe It</b> (above the add buttons)")}
+      <p>Write or paste the item the way a rulebook would, then click <b>Read Description</b>. Item Builder lists what it recognized; untick anything you don't want and click <b>Add Selected</b>. Nothing changes until you do, and the new components are normal cards you can adjust before saving. It works offline: nothing is sent anywhere.</p>
+      <h4>Tiers</h4>
+      <p>Start a line with a tier name or number, such as <i>“Awakened:”</i> or <i>“Tier 2 –”</i>, and everything after it begins at that tier. A sentence can also say <i>“at the Exalted tier, …”</i>. Missing tiers are added for you.</p>
+      <h4>What it understands</h4>
+      <dl>
+        <dt>Basics</dt><dd>A short title line as the name; <i>“Weapon (longsword), rare (requires attunement by a paladin)”</i> or <i>“+1 longsword”</i> for the base item, rarity, attunement and enhancement bonus.</dd>
+        <dt>Character traits</dt><dd><i>darkvision out to 60 feet</i>, blindsight, tremorsense, truesight, Devil's Sight; <i>a flying speed of 30 feet</i>, <i>your speed increases by 10 feet</i>; <i>your Strength score is 19</i>, <i>increase your Wisdom by 1</i>; <i>proficiency in Stealth</i>, <i>expertise in Insight</i>; <i>a fighting style of your choice</i> or <i>the Dueling fighting style</i>.</dd>
+        <dt>Actions</dt><dd><i>cast Misty Step once per long rest</i> (also “3 charges … regains all expended charges at dawn”, “a number of times equal to your proficiency bonus”, “at will”); <i>sheds bright light in a 20-foot radius and dim light for an additional 20 feet</i>; reactions such as <i>as a reaction when a creature hits you, you gain a +2 bonus to AC</i>.</dd>
+        <dt>Rule effects</dt><dd>Resistance, immunity or vulnerability to damage types; <i>can't be frightened</i>; +AC, +saving throws, +attack rolls; <i>an extra 1d6 radiant damage</i> (against a creature type, if named); advantage or disadvantage on skills, checks, saves, attacks, initiative or concentration; advantage on saves against spells; increased reach; ignoring cover or resistance; growing or shrinking; extra healing.</dd>
+        <dt>Use requirements</dt><dd><i>requires attunement by a wizard</i>, <i>creatures with a Strength lower than 15 have their speed reduced by 10 feet</i>, <i>a creature that isn't a cleric takes 2d6 psychic damage</i>.</dd>
+      </dl>
+      <p>Sentences it can't turn into rules are listed under <b>Not turned into rules</b>, and by default are added to the item's Description. Add any rules among them by hand.</p>`
   },
   {
     id: "movement", title: "Movement", icon: "fa-person-running", parent: "components",

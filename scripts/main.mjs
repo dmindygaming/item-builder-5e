@@ -13,13 +13,14 @@ import { DEFAULT_LIGHT, LIGHT_ACTIVATIONS, lightLine, registerLightHooks, syncLi
 import { applyFightingStyleAdvancement, registerFightingStyleHooks, syncFightingStyles } from "./fstyle.mjs";
 import { CLASS_CHOICES, REQUIREMENT_KINDS, REQUIREMENT_PENALTIES, registerRequirementHooks, requirementLine, syncRequirementEffects } from "./requirements.mjs";
 import { REACTION_EFFECTS, REACTION_TRIGGERS, reactionSummary, syncReactions } from "./reactions.mjs";
+import { parseDescription } from "./parse.mjs";
 import {
   DAMAGE_RULES, DEFENSIVE_TRIGGERS, FORMULA_RULES, OFFENSIVE_DAMAGE_RULES, ROLL_TARGETS, RULE_CATEGORIES,
   STATUS_TARGETS, handlingLabel, hasAutomationEffect, participantLabels, triggerOptions, match, registerRuleHooks, ruleDiagnostic,
   itemHasOwnUse, ruleFromComponent, sizeAfter, ruleHandling, syncRuleEffects
 } from "./rules.mjs";
 
-const MODULE_VERSION = "1.0.8";
+const MODULE_VERSION = "1.0.9";
 /** Returns every Fighting Style feat (cached), set up at init. */
 let fightingStyles = async () => [];
 const { ApplicationV2, DialogV2 } = foundry.applications.api;
@@ -172,6 +173,7 @@ class ItemBuilder5e extends ApplicationV2 {
     this.catalog = { spells:[], weapons:[], armor:[], shields:[], focuses:[], equipment:[], fightingStyles:[] };
     this.catalogLoaded = false;
     this.editItem = options.editItem ?? null;
+    this.describe = { text:"", result:null, open:!this.editItem };
     this.builderData = {
       name:"New Item",
       category:"weapon",
@@ -558,6 +560,17 @@ class ItemBuilder5e extends ApplicationV2 {
     el.querySelectorAll('select[name$=".reactionEffect"],select[name$=".trigger"],select[name$=".usesMode"],select[name$=".sizeMode"],select[name$=".requireKind"],select[name$=".penalty"],select[name$=".mode"]').forEach(sel=>sel.addEventListener("change",()=>{this._capture();this.render({force:true});}));
     el.querySelectorAll('select[name$=".selectionMode"]').forEach(sel=>sel.addEventListener("change",()=>{this._capture();this.render({force:true});}));
 
+    el.querySelector(".ib94-describe")?.addEventListener("toggle",e=>{this.describe.open=e.currentTarget.open;});
+    el.querySelector("[data-describe-read]")?.addEventListener("click",e=>{
+      e.preventDefault(); this._capture();
+      if(!this.describe.text.trim())return ui.notifications.warn("Write or paste a description first.");
+      this.describe.result=parseDescription(this.describe.text,this._describeContext());
+      if(!this.describe.result.findings.length)ui.notifications.info("Item Builder didn't recognize any rules in that description. Try wording like “resistance to fire damage” or “cast Misty Step once per long rest”.");
+      this.render({force:true});
+    });
+    el.querySelector("[data-describe-apply]")?.addEventListener("click",e=>{e.preventDefault();this._capture();this._applyDescribe();this.render({force:true});});
+    el.querySelector("[data-describe-clear]")?.addEventListener("click",e=>{e.preventDefault();this._capture();this.describe.result=null;this.render({force:true});});
+
     el.querySelectorAll("[data-add-component]").forEach(btn=>btn.addEventListener("click",e=>{
       e.preventDefault(); this._capture(); this._addComponent(e.currentTarget.dataset.addComponent); this.render({force:true});
     }));
@@ -619,6 +632,7 @@ class ItemBuilder5e extends ApplicationV2 {
       wd.versatileDenomination=v("weaponDamage.versatileDenomination")??wd.versatileDenomination;
     }
     b.description=v("description")??b.description;
+    this.describe.text=v("describeText")??this.describe.text;
     b.currentTier=Number(v("currentTier")??b.currentTier)||1;
 
     b.tiers.forEach((t,i)=>{t.name=v(`tier.${i}.name`)??t.name;t.gmNote=v(`tier.${i}.gmNote`)??t.gmNote??"";if(i>0)t.rarity=v(`tier.${i}.rarity`)??t.rarity??"";});
@@ -857,9 +871,81 @@ class ItemBuilder5e extends ApplicationV2 {
     this.builderData.components.push(c);
   }
 
+  /** Everything the description reader needs to know about this world. */
+  _describeContext(){
+    const labels=o=>Object.fromEntries(Object.entries(o??{}).map(([k,v])=>[k,loc(v,k)]));
+    const b=this.builderData;
+    return {
+      category:b.category, tiers:b.tiers.map(t=>t.name),
+      spells:this.catalog.spells, weapons:this.catalog.weapons, armor:this.catalog.armor, shields:this.catalog.shields,
+      fightingStyles:this.catalog.fightingStyles??[],
+      abilities:labels(cfg("abilities",{})), skills:labels(cfg("skills",{})), damageTypes:labels(cfg("damageTypes",{})),
+      creatureTypes:labels(cfg("creatureTypes",{})), conditions:labels(cfg("conditionTypes",{})), classes:CLASS_CHOICES
+    };
+  }
+
+  _describePanel(){
+    const d=this.describe, r=d.result, b=this.builderData;
+    const tierName=t=>b.tiers[t-1]?.name??`Tier ${t}`;
+    const results=r?`<div class="ib94-results">
+      ${r.findings.length?`<h4>Found ${r.findings.length} thing${r.findings.length>1?"s":""} — untick anything you don't want</h4>
+      <ul>${r.findings.map((f,i)=>`<li><label title="${esc(f.sentence)}"><input type="checkbox" name="describe.pick.${i}" checked>
+        <span class="ib94-kind">${f.component?"Component":"Basics"}</span>${f.tier>1?`<span class="ib94-tier">${esc(tierName(f.tier))}</span>`:""} ${esc(f.label)}</label></li>`).join("")}</ul>`:""}
+      ${r.leftovers.length?`<h4>Not turned into rules</h4><ul class="ib94-left">${r.leftovers.map(l=>`<li>${esc(l.text)}</li>`).join("")}</ul>
+        <label class="check"><input type="checkbox" name="describe.keepText" checked> Add these sentences to the item's Description</label>
+        <p class="hint">Anything here that is a rule can be added by hand (Rules Text, or the matching component).</p>`:""}
+      <div class="ib94-actions"><button type="button" data-describe-apply class="primary"><i class="fa-solid fa-plus"></i> Add Selected</button><button type="button" data-describe-clear><i class="fa-solid fa-xmark"></i> Discard</button></div>
+    </div>`:"";
+    return `<details class="ib94-describe" ${d.open||r?"open":""}><summary><i class="fa-solid fa-feather-pointed"></i> Describe It <span class="muted">— write the item in plain English and Item Builder suggests the components</span></summary>
+      <p class="hint">Describe it the way a rulebook would, one rule per sentence. Start a line with a tier name (“${esc(tierName(2))}:”) to put what follows at that tier. Nothing is added until you review the suggestions and click <b>Add Selected</b>.</p>
+      <textarea name="describeText" rows="5" placeholder="Weapon (longsword), rare (requires attunement)&#10;You gain a +1 bonus to attack and damage rolls made with this magic weapon. It sheds bright light in a 20-foot radius and dim light for an additional 20 feet.&#10;${esc(tierName(2))}: You can cast Misty Step once per long rest. You have resistance to fire damage.">${esc(d.text)}</textarea>
+      <div class="ib94-actions"><button type="button" data-describe-read><i class="fa-solid fa-wand-magic-sparkles"></i> Read Description</button></div>
+      ${results}
+    </details>`;
+  }
+
+  /** Add the suggestions the GM kept. */
+  _applyDescribe(){
+    const r=this.describe.result; if(!r)return;
+    const el=this.element, b=this.builderData;
+    const picked=r.findings.filter((_,i)=>el?.querySelector(`[name="describe.pick.${i}"]`)?.checked??true);
+    let added=0, basics=0;
+    for(const f of picked.filter(f=>f.basics)){
+      const x=f.basics; basics++;
+      if(x.name)b.name=x.name;
+      if(x.category&&b.category!=="feat"){if(x.category!==b.category)b.baseUuid="";b.category=x.category;}
+      if(x.armorType!==undefined)b.armorType=x.armorType;
+      if(x.baseUuid)b.baseUuid=x.baseUuid;
+      if(x.enhancementBonus)b.enhancementBonus=String(x.enhancementBonus);
+      if(x.attunement)b.attunement=x.attunement;
+      if(x.rarity)b.rarity=x.rarity;
+      if(x.tierRarity){while(b.tiers.length<x.tierRarity.tier)b.tiers.push({id:rid(),name:`Tier ${b.tiers.length+1}`});b.tiers[x.tierRarity.tier-1].rarity=x.tierRarity.rarity;}
+    }
+    const activation=b.category==="feat"?"always":b.attunement==="required"?"attuned":"equipped";
+    for(const f of picked.filter(f=>f.component)){
+      const {type,...fields}=foundry.utils.deepClone(f.component);
+      while(b.tiers.length<f.tier)b.tiers.push({id:rid(),name:`Tier ${b.tiers.length+1}`});
+      this._addComponent(type);
+      const c=b.components.at(-1);
+      if(type!=="light")c.activation=activation;
+      Object.assign(c,fields);
+      c.tier=f.tier;
+      added++;
+    }
+    const keep=el?.querySelector('[name="describe.keepText"]')?.checked;
+    if(keep&&r.leftovers.length){
+      const text=r.leftovers.map(l=>l.text).join(" ");
+      b.description=[b.description?.trim(),text].filter(Boolean).join("\n\n");
+    }
+    this.describe.result=null;
+    if(added||basics)this.describe.text="";
+    ui.notifications.info(`Item Builder added ${added} component${added===1?"":"s"}${basics?` and filled in ${basics} basic setting${basics===1?"":"s"}`:""}. Review them below before saving.`);
+  }
+
   _components(){
     const btn=(type,icon,label)=>`<button type="button" data-add-component="${type}"><i class="fa-solid ${icon}"></i><span>${label}</span></button>`;
     return `<div class="section-head"><div><h2>Components</h2><p>Add mechanics without touching UUIDs, data paths, or Active Effect keys.</p></div></div>
+      ${this._describePanel()}
       <div class="ib90-add">
         <div class="ib90-group"><h4>Character Traits</h4><div class="ib90-buttons">
           ${btn("movement","fa-person-running","Movement")}${btn("sense","fa-eye","Senses")}${btn("ability","fa-dumbbell","Ability Score")}${btn("skill","fa-graduation-cap","Skill")}${btn("fightingStyle","fa-hand-fist","Fighting Style")}${this.builderData.category==="feat"?btn("halfAsi","fa-arrow-up-1-9","2024 Half-ASI"):""}
