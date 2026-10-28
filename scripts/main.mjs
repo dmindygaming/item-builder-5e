@@ -22,7 +22,7 @@ import {
   itemHasOwnUse, ruleFromComponent, sizeAfter, ruleHandling, syncRuleEffects
 } from "./rules.mjs";
 
-const MODULE_VERSION = "1.1.3";
+const MODULE_VERSION = "1.1.4";
 /** Returns every Fighting Style feat (cached), set up at init. */
 let fightingStyles = async () => [];
 /** Every feat (cached), set up at init. */
@@ -584,7 +584,7 @@ class ItemBuilder5e extends ApplicationV2 {
       if(!this.describe.result.findings.length)ui.notifications.info("Item Builder didn't recognize any rules in that description. Try wording like “resistance to fire damage” or “cast Misty Step once per long rest”.");
       this.render({force:true});
     });
-    el.querySelector("[data-describe-apply]")?.addEventListener("click",e=>{e.preventDefault();this._capture();this._applyDescribe();this.render({force:true});});
+    el.querySelector("[data-describe-apply]")?.addEventListener("click",async e=>{e.preventDefault();this._capture();await this._applyDescribe();this.render({force:true});});
     el.querySelector("[data-describe-clear]")?.addEventListener("click",e=>{e.preventDefault();this._capture();this.describe.result=null;this.render({force:true});});
 
     el.querySelectorAll('select[name$=".poolAdd"]').forEach(sel=>sel.addEventListener("change",e=>{
@@ -972,11 +972,11 @@ class ItemBuilder5e extends ApplicationV2 {
   }
 
   /** Add the suggestions the GM kept. */
-  _applyDescribe(){
+  async _applyDescribe(){
     const r=this.describe.result; if(!r)return;
     const el=this.element, b=this.builderData;
     const picked=r.findings.filter((_,i)=>el?.querySelector(`[name="describe.pick.${i}"]`)?.checked??true);
-    let added=0, basics=0;
+    let added=0, basics=0, untypedNoWeapon=false;
     for(const f of picked.filter(f=>f.basics)){
       const x=f.basics; basics++;
       if(x.name)b.name=x.name;
@@ -1000,6 +1000,8 @@ class ItemBuilder5e extends ApplicationV2 {
       if(x.rarity)b.rarity=x.rarity;
       if(x.tierRarity){while(b.tiers.length<x.tierRarity.tier)b.tiers.push({id:rid(),name:`Tier ${b.tiers.length+1}`});b.tiers[x.tierRarity.tier-1].rarity=x.tierRarity.rarity;}
     }
+    // A base weapon set just now: load its damage first, so untyped extra damage can use its type.
+    try{ await this._syncWeaponDamageFromBase(); }catch{ /* keep current damage */ }
     const activation=["feat","background"].includes(b.category)?"always":b.attunement==="required"?"attuned":"equipped";
     for(const f of picked.filter(f=>f.component)){
       const {type,...fields}=foundry.utils.deepClone(f.component);
@@ -1007,7 +1009,14 @@ class ItemBuilder5e extends ApplicationV2 {
       this._addComponent(type);
       const c=b.components.at(-1);
       if(type!=="light")c.activation=activation;
-      Object.assign(c,fields);
+      const {sameAsWeapon,...rest}=fields;
+      Object.assign(c,rest);
+      // Untyped extra damage uses the weapon's own damage type.
+      if(sameAsWeapon){
+        const wt=b.category==="weapon"?b.weaponDamage?.type:"";
+        if(wt)c.damageType=wt;
+        else{c.damageType="force";untypedNoWeapon=true;}
+      }
       c.tier=f.tier;
       added++;
     }
@@ -1018,6 +1027,7 @@ class ItemBuilder5e extends ApplicationV2 {
     }
     this.describe.result=null;
     if(added||basics)this.describe.text="";
+    if(untypedNoWeapon)ui.notifications.warn("The description didn't name a damage type for the extra damage, and there is no base weapon to take one from, so it is set to Force. Change it on the Offensive Effect card if needed.");
     ui.notifications.info(`Item Builder added ${added} component${added===1?"":"s"}${basics?` and filled in ${basics} basic setting${basics===1?"":"s"}`:""}. Review them below before saving.`);
   }
 

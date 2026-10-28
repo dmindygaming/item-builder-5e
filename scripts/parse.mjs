@@ -630,6 +630,17 @@ export function parseDescription(text, ctx={}) {
       }
     }
 
+    // Untyped extra damage ("an additional 3d6 damage against humanoids"): the weapon's own damage type.
+    if ( !found.some(f => f.component?.effect === "extraDamage") && !requirementSentence ) {
+      const untyped = s.match(new RegExp(`(?:(?:extra|additional|bonus)\\s+${formulaRe}|${formulaRe}\\s+(?:extra|additional|bonus))\\s+damage\\b|\\badds?\\s+(?:an? )?${formulaRe}\\s+damage\\b`));
+      if ( untyped ) {
+        const f = (untyped[1] ?? untyped[2] ?? untyped[3]).replace(/\s+/g, " ");
+        const who = creaturesIn(s, T);
+        add(`Extra ${f} damage (the weapon's damage type)${who.length ? ` vs ${who.join(", ")}` : ""}`,
+          { type: "offensive", effect: "extraDamage", name: "Extra Damage", formula: f, damageType: "", sameAsWeapon: true, targetTypes: who, canCrit: true });
+      }
+    }
+
     // --- Reach and cover ---
     // Only an explicit increase counts: "this glaive has reach" describes the base weapon, which already has it.
     if ( (m = s.match(/reach[^.;]{0,30}?(?:increases|is increased|extends|is extended) by (\d+)|(\d+) (?:additional |extra )?feet (?:of|to) (?:your |its )?reach|\+\s*(\d+) (?:feet )?(?:of |to )?(?:your |its )?reach|(?:increases?|extends?|adds?|improves?|grants?|gives?) (?:\+\s*)?(?:your |its |the |the weapon's |its weapon's |weapon |the wielder's |wielder's )?reach (?:by |of )?\+?(\d+)|reach\s*\+\s*(\d+)/)) ) {
