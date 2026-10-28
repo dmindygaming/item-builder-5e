@@ -29,7 +29,8 @@ export async function toolChoices() {
     const walk = (obj, depth) => {
       for ( const [key, v] of Object.entries(obj ?? {}) ) {
         if ( key === "tool:*" ) continue;
-        if ( v?.selectable !== false || key.endsWith(":*") ) out.push({ key, label: String(v?.label ?? key), depth });
+        // A group heading (e.g. "tool:art") would grant every tool in it; offer its "Any …" entry instead.
+        if ( key.endsWith(":*") || (v?.selectable !== false && !v?.children) ) out.push({ key, label: String(v?.label ?? key), depth });
         if ( v?.children ) walk(v.children, depth + 1);
       }
     };

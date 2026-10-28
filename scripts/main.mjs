@@ -863,7 +863,7 @@ class ItemBuilder5e extends ApplicationV2 {
              <label>Value ${this._tip("The item's sale or market value, stored in D&D5e's native price field.")}<span class="ib315-money"><input type="number" min="0" step="0.01" name="value" value="${esc(b.value)}"><select name="currency">${selectOptions(cfg("currencies",{pp:"Platinum Pieces",gp:"Gold Pieces",ep:"Electrum Pieces",sp:"Silver Pieces",cp:"Copper Pieces"}),b.currency,false)}</select></span></label>`}
       </div>
       ${b.category==="background"?`<div class="callout"><i class="fa-solid fa-circle-info"></i><div><strong>Built like D&amp;D5e's 2024 backgrounds.</strong> When the background is dropped on a character, D&amp;D5e asks for the ability increases and languages, and adds the proficiencies and the Origin feat. Starting equipment can be added on the background's own sheet. The background is also copied to the ${esc(FEAT_PACK_LABEL)} compendium so players can find it.</div></div>`:""}
-      <div class="callout"><i class="fa-solid fa-circle-info"></i><div><strong>Base Item matters.</strong> Choosing Longsword, Plate, Shield, Arcane Focus, etc. copies the actual native D&D5e item first. Item Builder then adds your custom effects, spells, rules, and progression.</div></div>`;
+      ${["feat","background"].includes(b.category)?"":`<div class="callout"><i class="fa-solid fa-circle-info"></i><div><strong>Base Item matters.</strong> Choosing Longsword, Plate, Shield, Arcane Focus, etc. copies the actual native D&D5e item first. Item Builder then adds your custom effects, spells, rules, and progression.</div></div>`}`;
   }
 
   _backgroundFields(){
