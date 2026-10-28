@@ -2,6 +2,13 @@
 
 All notable changes to Item Builder 5e.
 
+## v1.1.1 Describe It reads feats
+
+- "Origin Feat named Martial Savant" (also General, Fighting Style and Epic Boon) sets the item to a Feat of that type and names it.
+- "Prerequisite: level 4" and "Prerequisite: Strength 13" fill the feat's requirements.
+- Fighting Style choices read more wordings: "a player's choice of a Fighting Style", "grants a Fighting Style", "the GM picks the Defense fighting style", "choose one of the following fighting styles: Archery, Dueling or Defense" (only those are offered).
+- "Increase one ability score of your choice by 1" and "Increase your Strength or Constitution by 1" become a 2024 Half-ASI on feats.
+
 ## v1.1.0 Describe It understands many more phrasings
 
 - Reach given as a total ("extends reach to 10 feet", "has a reach of 15 feet") is turned into the right bonus, counting the base weapon's own reach (a glaive is already 10 ft.).
