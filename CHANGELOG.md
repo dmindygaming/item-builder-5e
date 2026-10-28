@@ -2,6 +2,13 @@
 
 All notable changes to Item Builder 5e.
 
+## v1.1.0 Describe It understands many more phrasings
+
+- Reach given as a total ("extends reach to 10 feet", "has a reach of 15 feet") is turned into the right bonus, counting the base weapon's own reach (a glaive is already 10 ft.).
+- Extra damage without the word "extra": "adds 2d8 radiant damage against undead", "+1d6 fire damage", "attacks with it deal 2d6 radiant damage to fiends".
+- Also: "AC +1", "+1 to hit", "+1 to hit and damage", "you resist fire damage", "fire resistance", "fire immunity", "resistance against cold", "you can fly at 30 feet", "10 ft. of extra speed", "60 ft. darkvision", "see in darkness out to 60 feet", "Cure Wounds 2/day", "sets Strength to 23", "advantage on Wisdom saves".
+- Tested against 59 phrasings of common features and a set of flavor sentences that should produce nothing.
+
 ## v1.0.10 Describe It reads casual wording
 
 - Describe It now understands shorthand such as "Greataxe named Sun Cleaver", "+2 weapon", "2d8 additional radiant damage on undead", "Increases reach by 10 feet", "Reach +5", "Strength becomes 21", "Speed +10 ft.", "+1 to saves", "gets +1 AC" and "Fireball 1/day".
