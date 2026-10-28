@@ -143,7 +143,8 @@ export async function findFightingStyles() {
   const consider = (uuid, e, label) => {
     const sub = foundry.utils.getProperty(e, "system.type.subtype");
     if ( e.type !== "feat" || sub !== "fightingStyle" ) return;
-    const key = String(e.name).toLowerCase();
+    // "Fighting Style: Archery" and "Archery" are the same style from different packs.
+    const key = String(e.name).replace(/^\s*fighting\s+style\s*:\s*/i, "").trim().toLowerCase();
     const prefer = /24/.test(label);
     if ( !out.has(key) || (prefer && !out.get(key).prefer) ) out.set(key, { uuid, name: e.name, label, prefer });
   };
