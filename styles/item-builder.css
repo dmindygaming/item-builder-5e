@@ -319,7 +319,7 @@
 .item-builder-5e .ib33-root .ib94-actions { display: flex; gap: .4rem; margin-top: .4rem; }
 .item-builder-5e .ib33-root .ib94-actions button { width: auto; flex: 0 0 auto; padding: .3rem .8rem; }
 .item-builder-5e .ib33-root .ib94-results { margin-top: .6rem; padding-top: .5rem; border-top: 1px solid #7773; }
-.item-builder-5e .ib33-root .ib94-results h4 { margin: .3rem 0; font-size: .85rem; border: 0; }
+.item-builder-5e .ib33-root .ib94-results h4 { margin: .3rem 0; font-size: .9rem; font-family: inherit; font-weight: 700; text-transform: none; letter-spacing: normal; border: 0; }
 .item-builder-5e .ib33-root .ib94-results ul { list-style: none; margin: 0 0 .4rem; padding: 0; display: grid; gap: .2rem; }
 .item-builder-5e .ib33-root .ib94-results li label { display: flex; align-items: center; gap: .4rem; margin: 0; }
 .item-builder-5e .ib33-root .ib94-results li input { flex: 0 0 auto; margin: 0; }
