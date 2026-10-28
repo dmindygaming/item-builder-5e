@@ -20,7 +20,7 @@ import {
   itemHasOwnUse, ruleFromComponent, sizeAfter, ruleHandling, syncRuleEffects
 } from "./rules.mjs";
 
-const MODULE_VERSION = "1.0.10";
+const MODULE_VERSION = "1.1.0";
 /** Returns every Fighting Style feat (cached), set up at init. */
 let fightingStyles = async () => [];
 const { ApplicationV2, DialogV2 } = foundry.applications.api;
@@ -378,7 +378,8 @@ class ItemBuilder5e extends ApplicationV2 {
             "system.rarity",
             "system.rarities",
             "system.magicalBonus",
-            "system.attunement"
+            "system.attunement",
+            "system.properties"
           ]
         });
       } catch (_) {
@@ -401,7 +402,9 @@ class ItemBuilder5e extends ApplicationV2 {
         if (!isMundaneBase(e)) continue;
 
         if (e.type === "weapon") {
-          addPreferred("weapons", entry, pack, e);
+          const props=foundry.utils.getProperty(e,"system.properties");
+          const reach=Array.from(props instanceof Set?props:(Array.isArray(props)?props:Object.keys(props??{}).filter(k=>props[k]))).includes("rch");
+          addPreferred("weapons", {...entry,reach}, pack, e);
           continue;
         }
 
@@ -879,7 +882,7 @@ class ItemBuilder5e extends ApplicationV2 {
     const labels=o=>Object.fromEntries(Object.entries(o??{}).filter(([,v])=>!v?.pseudo).map(([k,v])=>[k,label(v,k)]));
     const b=this.builderData;
     return {
-      category:b.category, tiers:b.tiers.map(t=>t.name),
+      category:b.category, baseUuid:b.baseUuid, tiers:b.tiers.map(t=>t.name),
       spells:this.catalog.spells, weapons:this.catalog.weapons, armor:this.catalog.armor, shields:this.catalog.shields,
       fightingStyles:this.catalog.fightingStyles??[],
       abilities:labels(cfg("abilities",{})), skills:labels(cfg("skills",{})), damageTypes:labels(cfg("damageTypes",{})),

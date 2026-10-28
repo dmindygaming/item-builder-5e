@@ -21,6 +21,7 @@ const NUMBER = "(\\d+|one|two|three|four|five|six|seven|eight|nine|ten)";
 const SIZE_WORDS = { tiny: "tiny", small: "sm", medium: "med", large: "lg", huge: "huge", gargantuan: "grg" };
 const RARITY_WORDS = [["very rare", "veryRare"], ["uncommon", "uncommon"], ["legendary", "legendary"], ["artifact", "artifact"], ["common", "common"], ["rare", "rare"]];
 const MOVE_WORDS = { fly: "fly", flying: "fly", swim: "swim", swimming: "swim", climb: "climb", climbing: "climb", burrow: "burrow", burrowing: "burrow", walk: "walk", walking: "walk" };
+const DEFENSE_EFFECTS = new Set(["resistance", "immunity", "vulnerability"]);
 const MOVE_LABELS = { fly: "Flying", swim: "Swimming", climb: "Climbing", burrow: "Burrowing", walk: "Walking" };
 const SENSES =["darkvision", "blindsight", "tremorsense", "truesight"];
 const DEFAULT_TIER_WORDS = ["dormant", "awakened", "exalted"];
@@ -67,6 +68,7 @@ function norm(s) {
   return String(s).toLowerCase()
     .replace(/[’‘]/g, "'").replace(/[“”]/g, "\"").replace(/[–—]/g, "-")
     .replace(/(\d+)\s*-?\s*(?:foot|feet|ft\.?)(?![a-z])/g, "$1 feet")
+    .replace(/\bsaves\b/g, "saving throws")
     .replace(/\s+/g, " ").trim();
 }
 
@@ -319,12 +321,13 @@ export function parseDescription(text, ctx={}) {
     }
 
     // --- Spells ---
-    if ( /\bcast\b|\bcantrip\b|\bknow the\b|\bspell\b/.test(s) && (ctx.spells ?? []).length ) {
+    const castWord = /\bcast\b|\bcantrip\b|\bknow the\b|\bspell\b/.test(s);
+    if ( (castWord || usesIn(s, T)) && (ctx.spells ?? []).length ) {
       let rest = s;
       const spells = [];
       for ( const sp of [...ctx.spells].sort((a, b) => b.name.length - a.name.length) ) {
         const n = String(sp.name).toLowerCase();
-        if ( n.length < 4 ) continue;
+        if ( n.length < 4 || (!castWord && (n.length < 7 || !n.includes(" "))) ) continue;
         const re = new RegExp(`(?<![a-z])${reEsc(n)}(?![a-z])`);
         if ( re.test(rest) ) { spells.push(sp); rest = rest.replace(re, " "); }
       }
@@ -351,12 +354,16 @@ export function parseDescription(text, ctx={}) {
 
     // --- Senses ---
     for ( const sense of SENSES ) {
-      if ( (m = s.match(new RegExp(`${sense}(?: out)?(?: to)?(?: a range of)?(?: with a range of)? (\\d+)`))) || (m = s.match(new RegExp(`(\\d+) feet of ${sense}`))) ) {
+      if ( (m = s.match(new RegExp(`${sense}(?: out)?(?: to)?(?: a range of)?(?: with a range of)? (\\d+)`))) || (m = s.match(new RegExp(`(\\d+) feet (?:of )?${sense}`))) ) {
         const more = new RegExp(`${sense}[^.;]*(?:increases?|extends?|additional|more)|(?:increases?|extends?) (?:your |its )?(?:range of )?${sense}`).test(s);
         add(`${cap(sense)} ${more ? "+" : ""}${m[1]} ft.`, { type: "sense", name: cap(sense), sense, mode: more ? "add" : "upgrade", value: m[1] });
       } else if ( new RegExp(`(?:gain|have|grants?|gives?) ${sense}`).test(s) ) {
         add(`${cap(sense)} 60 ft.`, { type: "sense", name: cap(sense), sense, mode: "upgrade", value: "60" });
       }
+    }
+    if ( !found.some(f => f.component?.type === "sense") && (m = s.match(/see (?:normally )?in (magical )?darkness[^.;]*?(\d+)/)) ) {
+      if ( m[1] ) add(`Devil's Sight ${m[2]} ft.`, { type: "sense", name: "Devil's Sight", sense: "devilsSight", mode: "upgrade", value: m[2] });
+      else add(`Darkvision ${m[2]} ft.`, { type: "sense", name: "Darkvision", sense: "darkvision", mode: "upgrade", value: m[2] });
     }
     if ( /devil'?s sight/.test(s) ) {
       const r = s.match(/devil'?s sight[^.;]*?(\d+)/)?.[1] ?? "120";
@@ -373,12 +380,18 @@ export function parseDescription(text, ctx={}) {
         add(`${label} speed ${m[2]} ft.`, { type: "movement", name: `${label} Speed`, movementType: t, mode: "override", value: m[2] });
       }
       const inc = s.match(/(?:(walking|flying|swimming|climbing|burrowing) )?speed (?:increases|is increased|improves) by (\d+)|\+\s*(\d+) feet to (?:your )?(?:(walking|flying|swimming|climbing) )?speed|(\d+) (?:extra|additional) feet of (?:(walking|flying|swimming|climbing) )?(?:movement|speed)/);
-      const inc2 = inc ? null : s.match(/(?:(walking|flying|swimming|climbing|burrowing) )?speed\s*\+\s*(\d+)|\+\s*(\d+) (?:feet )?(?:to |of )?(?:your )?(?:(walking|flying|swimming|climbing) )?(?:speed|movement)/);
+      if ( (m = s.match(/\b(fly|swim|climb|burrow)\s+(?:at|up to|with a speed of)\s+(\d+)/)) && !seen.has(MOVE_WORDS[m[1]]) ) {
+        const t = MOVE_WORDS[m[1]]; seen.add(t);
+        add(`${MOVE_LABELS[t]} speed ${m[2]} ft.`, { type: "movement", name: `${MOVE_LABELS[t]} Speed`, movementType: t, mode: "override", value: m[2] });
+      }
+      const inc3 = s.match(/(\d+) feet of (?:extra|additional|bonus) (?:walking )?(?:speed|movement)/);
+      const inc2 = inc || inc3 ? null : s.match(/(?:(walking|flying|swimming|climbing|burrowing) )?speed\s*\+\s*(\d+)|\+\s*(\d+) (?:feet )?(?:to |of )?(?:your )?(?:(walking|flying|swimming|climbing) )?(?:speed|movement)/);
       if ( inc2 && !requirementSentence ) {
         const t = MOVE_WORDS[inc2[1] ?? inc2[4] ?? "walking"] ?? "walk";
         const v = inc2[2] ?? inc2[3];
         add(`Speed +${v} ft.${t !== "walk" ? ` (${t})` : ""}`, { type: "movement", name: "Speed Bonus", movementType: t, mode: "add", value: v });
       }
+      if ( inc3 && !inc && !requirementSentence ) add(`Speed +${inc3[1]} ft.`, { type: "movement", name: "Speed Bonus", movementType: "walk", mode: "add", value: inc3[1] });
       if ( inc && !requirementSentence ) {
         const t = MOVE_WORDS[inc[1] ?? inc[4] ?? inc[6] ?? "walking"] ?? "walk";
         const v = inc[2] ?? inc[3] ?? inc[5];
@@ -390,8 +403,8 @@ export function parseDescription(text, ctx={}) {
     if ( !requirementSentence ) {
       for ( const [k, l] of T.abilities ) {
         const L = reEsc(l);
-        if ( (m = s.match(new RegExp(`${L} (?:score )?(?:is|becomes|changes to|is set to|equals) (\\d+)|(?:sets? )?your ${L}(?: score)? to (\\d+)|${L} (?:score )?of (\\d+)(?! or)`))) ) {
-          const v = m[1] ?? m[2] ?? m[3];
+        if ( (m = s.match(new RegExp(`${L} (?:score )?(?:is|becomes|changes to|is set to|equals) (\\d+)|(?:sets? |set )(?:your )?${L}(?: score)? to (\\d+)|your ${L}(?: score)? to (\\d+)|${L} (?:score )?of (\\d+)(?! or)`))) ) {
+          const v = m[1] ?? m[2] ?? m[3] ?? m[4];
           add(`${cap(l)} becomes ${v}`, { type: "ability", name: `${cap(l)} ${v}`, ability: k, mode: "override", value: v });
         } else if ( (m = s.match(new RegExp(`${L}(?: score)? increases by (\\d+)|increases? (?:your )?${L}(?: score)? by (\\d+)|\\+\\s*(\\d+) (?:bonus )?(?:to )?(?:your )?${L}(?! saving| check)`))) ) {
           const v = m[1] ?? m[2] ?? m[3];
@@ -438,9 +451,9 @@ export function parseDescription(text, ctx={}) {
     }
 
     // --- AC, saves and attack bonuses ---
-    const acM = s.match(/\+\s*(\d+)\s*(?:bonus )?(?:to )?(?:your |the )?(?:ac|armor class)(?![a-z])|(?:ac|armor class) (?:increases|is increased) by (\d+)|bonus to (?:your )?(?:ac|armor class) (?:of|equal to) \+?(\d+)/);
+    const acM = s.match(/\+\s*(\d+)\s*(?:bonus )?(?:to )?(?:your |the )?(?:ac|armor class)(?![a-z])|(?:ac|armor class) (?:increases|is increased) by (\d+)|bonus to (?:your )?(?:ac|armor class) (?:of|equal to) \+?(\d+)|(?<![a-z])(?:ac|armor class)\s*\+\s*(\d+)/);
     if ( acM && !requirementSentence ) {
-      const v = acM[1] ?? acM[2] ?? acM[3];
+      const v = acM[1] ?? acM[2] ?? acM[3] ?? acM[4];
       if ( category === "armor" && !found.some(f => f.basics?.enhancementBonus) && Number(v) <= 3 ) add(`+${v} armor enhancement`, null, { enhancementBonus: v });
       else if ( category !== "armor" ) add(`+${v} AC`, { type: "defensive", effect: "acBonus", name: `+${v} AC`, formula: v, trigger: "struck" });
     }
@@ -450,9 +463,9 @@ export function parseDescription(text, ctx={}) {
       const ab = saveM[2] ? abilityIn(saveM[2], T) : "";
       add(`+${v} to ${ab ? cap(T.abilities.find(([k]) => k === ab)[1]) + " " : ""}saving throws`, { type: "defensive", effect: "saveBonus", name: `+${v} Saving Throws`, formula: v, trigger: "damage", ability: ab });
     }
-    const atk = s.match(/\+\s*(\d+)\s*(?:bonus )?to (?:its |your )?attack (?:and damage )?rolls?(?: and damage)?/);
+    const atk = s.match(/\+\s*(\d+)\s*(?:bonus )?(?:to )?(?:its |your )?(?:attack(?: rolls?)?|hit)(?: and damage(?: rolls?)?)?(?![a-z])/);
     if ( atk && !/spell attack/.test(s) ) {
-      const both = /attack and damage|attack rolls? and damage/.test(atk[0]);
+      const both = /and damage/.test(atk[0]);
       if ( both && category === "weapon" && !found.some(f => f.basics?.enhancementBonus) && Number(atk[1]) <= 3 ) add(`+${atk[1]} weapon enhancement`, null, { enhancementBonus: atk[1] });
       else if ( !both ) add(`+${atk[1]} to attack rolls`, { type: "offensive", effect: "attackBonus", name: `+${atk[1]} Attack`, formula: atk[1] });
       else if ( !found.some(f => f.basics?.enhancementBonus) ) add(`+${atk[1]} to attack and damage rolls`, null, { enhancementBonus: atk[1], category: "weapon" });
@@ -470,11 +483,29 @@ export function parseDescription(text, ctx={}) {
       }
     }
 
+    {
+      const re2 = new RegExp(`(?:\\b(adds?|deals?|does|inflicts?)\\s+(?:an? )?|\\+\\s*)${formulaRe}\\s+([a-z]+)\\s+damage`, "g");
+      while ( (m = re2.exec(s)) ) {
+        const t = damageTypesIn(m[3], T)[0];
+        if ( !t || found.some(f => f.component?.effect === "extraDamage" && f.component.damageType === t) ) continue;
+        const who = creaturesIn(s, T);
+        const extra = !m[1] || /^adds?$/.test(m[1]) || who.length || /\bextra\b|\bon a hit\b|\bwhen you hit\b|\bits attacks\b|\battacks with\b|\bhits\b/.test(s);
+        if ( !extra || requirementSentence ) continue;
+        add(`Extra ${m[2]} ${t} damage${who.length ? ` vs ${who.join(", ")}` : ""}`, { type: "offensive", effect: "extraDamage", name: `Extra ${cap(t)} Damage`, formula: m[2].replace(/\s+/g, " "), damageType: t, targetTypes: who, canCrit: true });
+      }
+    }
+
     // --- Reach and cover ---
     // Only an explicit increase counts: "this glaive has reach" describes the base weapon, which already has it.
     if ( (m = s.match(/reach[^.;]{0,30}?(?:increases|is increased|extends|is extended) by (\d+)|(\d+) (?:additional |extra )?feet (?:of|to) (?:your |its )?reach|\+\s*(\d+) (?:feet )?(?:of |to )?(?:your |its )?reach|(?:increases?|extends?|adds?|improves?|grants?|gives?) (?:\+\s*)?(?:your |its |the |the weapon's |its weapon's |weapon |the wielder's |wielder's )?reach (?:by |of )?\+?(\d+)|reach\s*\+\s*(\d+)/)) ) {
       const v = m[1] ?? m[2] ?? m[3] ?? m[4] ?? m[5];
       add(`Reach +${v} ft.`, { type: "offensive", effect: "reachBonus", name: "Increased Reach", formula: v });
+    } else if ( (m = s.match(/\breach[^.;]{0,25}?\b(?:to|of|is|becomes|equals|=)\s*(\d+)|(\d+)[- ]feet reach\b/)) && !/\bwithin\b/.test(s) ) {
+      const total = Number(m[1] ?? m[2]);
+      const baseId = [...findings, ...found].reverse().find(f => f.basics?.baseUuid)?.basics.baseUuid ?? ctx.baseUuid;
+      const baseReach = (ctx.weapons ?? []).find(w => w.uuid === baseId)?.reach ? 10 : 5;
+      const v = total - baseReach;
+      if ( v > 0 ) add(`Reach ${total} ft. (+${v})`, { type: "offensive", effect: "reachBonus", name: "Increased Reach", formula: String(v) });
     }
     if ( /ignores? (?:all |total )cover|ignores? total cover/.test(s) ) add("Ignores all cover", { type: "offensive", effect: "ignoreAllCover", name: "Ignore Cover" });
     else if ( /ignores? (?:half (?:cover )?and )?three-quarters cover/.test(s) ) add("Ignores half and three-quarters cover", { type: "offensive", effect: "ignoreThreeQuartersCover", name: "Ignore Cover" });
@@ -493,9 +524,17 @@ export function parseDescription(text, ctx={}) {
         dmgRule(/ignores? (?:a target's |the target's |any )?immunity to /, "ignoreImmunity", "Ignore immunity:", "offensive");
       }
     } else {
-      dmgRule(/resistan(?:ce|t) to /, "resistance", "Resistance:");
-      dmgRule(/(?:immunity|immune) to /, "immunity", "Immunity:");
-      dmgRule(/vulnerab(?:ility|le) to /, "vulnerability", "Vulnerability:");
+      dmgRule(/resistan(?:ce|t) (?:to|against) /, "resistance", "Resistance:");
+      dmgRule(/(?:immunity|immune) (?:to|against) /, "immunity", "Immunity:");
+      dmgRule(/vulnerab(?:ility|le) (?:to|against) /, "vulnerability", "Vulnerability:");
+      if ( !found.some(f => DEFENSE_EFFECTS.has(f.component?.effect)) ) {
+        dmgRule(/\bresists? /, "resistance", "Resistance:");
+        const pre = s.match(/((?:[a-z]+(?:,? (?:and|or) |, ))*[a-z]+) (resistance|immunity|vulnerability)\b(?! to| against)/);
+        if ( pre ) {
+          const eff = pre[2] === "resistance" ? "resistance" : pre[2] === "immunity" ? "immunity" : "vulnerability";
+          for ( const t of damageTypesIn(pre[1], T) ) add(`${cap(pre[2])}: ${t} damage`, { type: "defensive", effect: eff, name: `${cap(pre[2])}: ${cap(t)}`, damageType: t, trigger: "damage" });
+        }
+      }
     }
 
     // --- Condition immunity ---
