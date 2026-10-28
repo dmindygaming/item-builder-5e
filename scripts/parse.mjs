@@ -221,6 +221,21 @@ export function parseDescription(text, ctx={}) {
     if ( rarity && tier === 1 && !/\bcast|resist|advantage\b/.test(s) ) add(`Rarity: ${cap(rarity[0])}`, null, { rarity: rarity[1] });
     else if ( rarity && tier > 1 && /\b(?:becomes?|is now|rarity)\b/.test(s) ) add(`Tier ${tier} rarity: ${cap(rarity[0])}`, null, { tierRarity: { tier, rarity: rarity[1] } });
 
+    // --- "Origin Feat named Martial Savant", "General feat (requires level 4)" ---
+    const featLine = tier === 1 && s.match(/^(?:an? |this is an? |this )?(origin|general|epic boon|fighting style)?\s*(?:feat|feature)\b(?! of your choice)/);
+    if ( featLine && !/\b(?:gain|gains|adds?|grants?|choose|choice)\b/.test(s.split(/\b(?:named|called)\b/)[0]) ) {
+      const featType = { origin: "origin", general: "general", "epic boon": "epicBoon", "fighting style": "fightingStyle" }[featLine[1] ?? ""] ?? "";
+      category = "feat";
+      add(`Category: ${featType ? featLine[1].split(" ").map(cap).join(" ") + " " : ""}Feat`, null, { category: "feat", ...(featType ? { featType } : {}) });
+    }
+    // Feat prerequisites: "Prerequisite: level 4", "Prerequisite: Strength 13 or higher", "requires level 4".
+    if ( category === "feat" || featLine ) {
+      if ( (m = s.match(/(?:requires?|prerequisites?:?)\s+(?:character )?level (\d+)|level (\d+)\+?\s*(?:required|prerequisite)|prerequisites?:?[^.;]*?(\d+)(?:st|nd|rd|th) level/)) ) add(`Required level ${m[1] ?? m[2] ?? m[3]}`, null, { levelRequirement: m[1] ?? m[2] ?? m[3] });
+      if ( (m = s.match(/prerequisites?:?\s*(?:an? )?(strength|dexterity|constitution|intelligence|wisdom|charisma)(?: score)?(?: of)? (\d+)/)) ) {
+        add(`Required ${cap(m[1])} ${m[2]}`, null, { requirementAbility: abilityIn(m[1], T), requirementScore: m[2] });
+      }
+    }
+
     const typed = s.match(/\b(weapon|armor|armour|shield)\s*\(([^)]+)\)/);
     const enh = s.match(/\+\s*([1-3])\s+([a-z' -]+)/);
     const named = original.match(/\b(?:named|called|known as)\s+["“']?([A-Z][\w'’-]*(?:\s+(?:of|the|and|[A-Z][\w'’-]*))*)/);
@@ -340,12 +355,13 @@ export function parseDescription(text, ctx={}) {
     }
 
     // --- Fighting Style ---
-    if ( /fighting style/.test(s) ) {
+    if ( /fighting style/.test(s) && !/fighting style (?:feat|feature)\b/.test(s) ) {
       const styles = (ctx.fightingStyles ?? []).filter(st => {
         const n = String(st.name).toLowerCase().replace(/^fighting style:\s*/, "");
         return new RegExp(`(?<![a-z])${reEsc(n)}(?![a-z])`).test(s);
       });
-      if ( /of your choice|you choose|choose (?:a|one)|your choice/.test(s) ) {
+      const gmPick = /\b(?:gm|dm|game master)(?:'s)? (?:picks?|chooses?|choice)\b/.test(s);
+      if ( !gmPick && (/\b(?:of (?:your|their|the player's) choice|(?:your|their|player's|players'|the player's) choice|you choose|(?:player|they) chooses?|choose (?:a|one)|choice of (?:a|one|any))\b/.test(s) || !styles.length) ) {
         add(`Fighting Style: player's choice${styles.length > 1 ? ` (${styles.map(st => st.name).join(", ")})` : ""}`, { type: "fightingStyle", name: "Fighting Style", mode: "player", poolUuids: styles.length > 1 ? styles.map(st => st.uuid) : [] });
       } else if ( styles.length ) {
         add(`Fighting Style: ${styles[0].name}`, { type: "fightingStyle", name: `Fighting Style: ${styles[0].name.replace(/^fighting style:\s*/i, "")}`, mode: "gm", styleUuid: styles[0].uuid });
@@ -399,8 +415,24 @@ export function parseDescription(text, ctx={}) {
       }
     }
 
+    // --- 2024 feat ability increase: "+1 to one ability score of your choice", "Increase your Strength or Dexterity by 1" ---
+    let halfAsi = false;
+    if ( !requirementSentence && (m = s.match(/increase (?:one )?(?:of )?(?:your )?ability scores? (?:of your choice )?by 1|\+\s*1 to (?:one|an|any) ability score(?: of your choice)?|one ability score of your choice (?:increases )?by 1/)) ) {
+      add("Ability increase +1: player's choice of any ability", { type: "halfAsi", name: "Ability Score Increase", selectionMode: "choice", allowedAbilities: T.abilities.map(([k]) => k) });
+      halfAsi = true;
+    } else if ( !requirementSentence && (m = s.match(/increase (?:your )?((?:[a-z]+,? )+(?:or [a-z]+ )?)(?:score )?by 1\b/)) ) {
+      const picks = T.abilities.filter(([, l]) => new RegExp(`(?<![a-z])${reEsc(l)}(?![a-z])`).test(m[1])).map(([k]) => k);
+      if ( picks.length > 1 || (picks.length === 1 && (category === "feat" || /maximum of 20|max(?:imum)? 20/.test(s))) ) {
+        const names = picks.map(k => cap(T.abilities.find(([a]) => a === k)[1]));
+        add(picks.length > 1 ? `Ability increase +1: player picks ${names.join(" or ")}` : `Ability increase +1: ${names[0]}`,
+          picks.length > 1 ? { type: "halfAsi", name: "Ability Score Increase", selectionMode: "choice", allowedAbilities: picks }
+            : { type: "halfAsi", name: `${names[0]} +1`, selectionMode: "fixed", ability: picks[0], allowedAbilities: T.abilities.map(([k]) => k) });
+        halfAsi = true;
+      }
+    }
+
     // --- Ability scores ---
-    if ( !requirementSentence ) {
+    if ( !requirementSentence && !halfAsi ) {
       for ( const [k, l] of T.abilities ) {
         const L = reEsc(l);
         if ( (m = s.match(new RegExp(`${L} (?:score )?(?:is|becomes|changes to|is set to|equals) (\\d+)|(?:sets? |set )(?:your )?${L}(?: score)? to (\\d+)|your ${L}(?: score)? to (\\d+)|${L} (?:score )?of (\\d+)(?! or)`))) ) {

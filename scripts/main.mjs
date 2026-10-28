@@ -20,7 +20,7 @@ import {
   itemHasOwnUse, ruleFromComponent, sizeAfter, ruleHandling, syncRuleEffects
 } from "./rules.mjs";
 
-const MODULE_VERSION = "1.1.0";
+const MODULE_VERSION = "1.1.1";
 /** Returns every Fighting Style feat (cached), set up at init. */
 let fightingStyles = async () => [];
 const { ApplicationV2, DialogV2 } = foundry.applications.api;
@@ -919,6 +919,9 @@ class ItemBuilder5e extends ApplicationV2 {
     for(const f of picked.filter(f=>f.basics)){
       const x=f.basics; basics++;
       if(x.name)b.name=x.name;
+      if(x.featType)b.featType=x.featType;
+      if(x.levelRequirement)b.levelRequirement=String(x.levelRequirement);
+      if(x.requirementAbility){b.requirementAbility=x.requirementAbility;b.requirementScore=String(x.requirementScore??"");}
       if(x.category&&b.category!=="feat"){if(x.category!==b.category)b.baseUuid="";b.category=x.category;}
       if(x.armorType!==undefined)b.armorType=x.armorType;
       if(x.baseUuid)b.baseUuid=x.baseUuid;
