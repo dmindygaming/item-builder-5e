@@ -127,12 +127,13 @@ function usesIn(s, T) {
   if ( /\bat will\b/.test(s) ) return { usesMode: "unlimited" };
   if ( (m = s.match(/(?:a number of times equal to|times equal to|uses equal to)\s+(?:your )?proficiency bonus/)) || /proficiency bonus times/.test(s) ) mode = "prof";
   else if ( (m = s.match(/(?:a number of times equal to|times equal to)\s+(?:your )?(\w+) modifier/)) ) { mode = "ability"; ability = abilityIn(m[1], T) || "cha"; }
+  else if ( (m = s.match(/\b(\d+)\s*\/\s*(?:day|dawn|long rest|short rest|rest|lr|sr)\b/)) ) { mode = "fixed"; count = m[1]; }
   else if ( (m = s.match(new RegExp(`\\b(once|twice|thrice|${NUMBER}\\s+times?)\\b(?! (?:the|your|its|their|as))`))) ) { mode = "fixed"; count = String(num(m[1].split(" ")[0]) ?? 1); }
   else if ( (m = s.replace(/(?:expend|spend|use|uses|using) (?:\d+|one|two|three) (?:of its )?charges?/g, "").match(new RegExp(`${NUMBER}\\s+charges?`))) ) { mode = "fixed"; count = String(num(m[1]) ?? 1); }
   if ( !mode ) return null;
-  if ( /short (?:or long )?rest/.test(s) ) recovery = "sr";
+  if ( /short (?:or long )?rest|\/\s*sr\b/.test(s) ) recovery = "sr";
   else if ( /\bdawn\b/.test(s) ) recovery = "dawn";
-  else if ( /\b(?:per|each|a) day\b|\bdaily\b/.test(s) ) recovery = "day";
+  else if ( /\b(?:per|each|a) day\b|\bdaily\b|\/\s*day\b/.test(s) ) recovery = "day";
   else if ( /long rest/.test(s) ) recovery = "lr";
   const out = { usesMode: mode, usesCount: count, recovery };
   if ( ability ) out.usesAbility = ability;
@@ -220,13 +221,29 @@ export function parseDescription(text, ctx={}) {
 
     const typed = s.match(/\b(weapon|armor|armour|shield)\s*\(([^)]+)\)/);
     const enh = s.match(/\+\s*([1-3])\s+([a-z' -]+)/);
-    const base = typed ? findBase(typed[2]) : (enh ? findBase(enh[2]) : null);
+    const named = original.match(/\b(?:named|called|known as)\s+["“']?([A-Z][\w'’-]*(?:\s+(?:of|the|and|[A-Z][\w'’-]*))*)/);
+    if ( named && tier === 1 && !findings.some(f => f.basics?.name) ) {
+      const nm = named[1].replace(/\s+(?:of|the|and)$/i, "");
+      add(`Name: ${nm}`, null, { name: nm });
+    }
+    const baseKnown = () => [...findings, ...found].some(f => f.basics?.baseUuid);
+    // "Greataxe named Sun Cleaver" / "A flaming longsword": the base item named at the start of the description.
+    const lead = s.split(/[.,;:]/)[0];
+    const leadBase = !baseKnown() && (named || findings.every(f => f.basics)) && lead.split(" ").length <= 8 ? findBase(lead) : null;
+    const base = typed ? findBase(typed[2]) : (enh ? findBase(enh[2]) : null) ?? leadBase;
     if ( base ) {
       const cat = base.kind === "weapon" ? "weapon" : "armor";
       category = cat;
       add(`Base item: ${base.e.name}`, null, { category: cat, baseUuid: base.e.uuid, ...(cat === "armor" ? { armorType: base.kind === "shield" ? "shield" : (base.e.armorType || "") } : {}) });
     }
-    if ( enh && base ) add(`+${enh[1]} enhancement bonus`, null, { enhancementBonus: enh[1] });
+    if ( enh && (base || /^(?:magic(?:al)? )?(?:weapon|armor|armour|shield)\b/.test(enh[2].trim())) ) {
+      if ( !base && !baseKnown() ) {
+        const kind = enh[2].trim().replace(/^magic(?:al)? /, "");
+        category = kind === "weapon" ? "weapon" : "armor";
+        if ( ctx.category !== category ) add(`Category: ${kind === "weapon" ? "Weapon" : "Armor"}`, null, { category, ...(kind === "shield" ? { armorType: "shield" } : {}) });
+      }
+      add(`+${enh[1]} enhancement bonus`, null, { enhancementBonus: enh[1] });
+    }
 
     if ( /requires? attunement/.test(s) ) {
       add("Requires attunement", null, { attunement: "required" });
@@ -356,6 +373,12 @@ export function parseDescription(text, ctx={}) {
         add(`${label} speed ${m[2]} ft.`, { type: "movement", name: `${label} Speed`, movementType: t, mode: "override", value: m[2] });
       }
       const inc = s.match(/(?:(walking|flying|swimming|climbing|burrowing) )?speed (?:increases|is increased|improves) by (\d+)|\+\s*(\d+) feet to (?:your )?(?:(walking|flying|swimming|climbing) )?speed|(\d+) (?:extra|additional) feet of (?:(walking|flying|swimming|climbing) )?(?:movement|speed)/);
+      const inc2 = inc ? null : s.match(/(?:(walking|flying|swimming|climbing|burrowing) )?speed\s*\+\s*(\d+)|\+\s*(\d+) (?:feet )?(?:to |of )?(?:your )?(?:(walking|flying|swimming|climbing) )?(?:speed|movement)/);
+      if ( inc2 && !requirementSentence ) {
+        const t = MOVE_WORDS[inc2[1] ?? inc2[4] ?? "walking"] ?? "walk";
+        const v = inc2[2] ?? inc2[3];
+        add(`Speed +${v} ft.${t !== "walk" ? ` (${t})` : ""}`, { type: "movement", name: "Speed Bonus", movementType: t, mode: "add", value: v });
+      }
       if ( inc && !requirementSentence ) {
         const t = MOVE_WORDS[inc[1] ?? inc[4] ?? inc[6] ?? "walking"] ?? "walk";
         const v = inc[2] ?? inc[3] ?? inc[5];
@@ -367,7 +390,7 @@ export function parseDescription(text, ctx={}) {
     if ( !requirementSentence ) {
       for ( const [k, l] of T.abilities ) {
         const L = reEsc(l);
-        if ( (m = s.match(new RegExp(`${L} score (?:is|becomes|changes to|is set to|equals) (\\d+)|(?:sets? )?your ${L}(?: score)? to (\\d+)|${L} (?:score )?of (\\d+)(?! or)`))) ) {
+        if ( (m = s.match(new RegExp(`${L} (?:score )?(?:is|becomes|changes to|is set to|equals) (\\d+)|(?:sets? )?your ${L}(?: score)? to (\\d+)|${L} (?:score )?of (\\d+)(?! or)`))) ) {
           const v = m[1] ?? m[2] ?? m[3];
           add(`${cap(l)} becomes ${v}`, { type: "ability", name: `${cap(l)} ${v}`, ability: k, mode: "override", value: v });
         } else if ( (m = s.match(new RegExp(`${L}(?: score)? increases by (\\d+)|increases? (?:your )?${L}(?: score)? by (\\d+)|\\+\\s*(\\d+) (?:bonus )?(?:to )?(?:your )?${L}(?! saving| check)`))) ) {
@@ -415,13 +438,13 @@ export function parseDescription(text, ctx={}) {
     }
 
     // --- AC, saves and attack bonuses ---
-    const acM = s.match(/\+\s*(\d+)\s*(?:bonus )?to (?:your )?(?:ac|armor class)|(?:ac|armor class) (?:increases|is increased) by (\d+)|bonus to (?:your )?(?:ac|armor class) (?:of|equal to) \+?(\d+)/);
+    const acM = s.match(/\+\s*(\d+)\s*(?:bonus )?(?:to )?(?:your |the )?(?:ac|armor class)(?![a-z])|(?:ac|armor class) (?:increases|is increased) by (\d+)|bonus to (?:your )?(?:ac|armor class) (?:of|equal to) \+?(\d+)/);
     if ( acM && !requirementSentence ) {
       const v = acM[1] ?? acM[2] ?? acM[3];
       if ( category === "armor" && !found.some(f => f.basics?.enhancementBonus) && Number(v) <= 3 ) add(`+${v} armor enhancement`, null, { enhancementBonus: v });
       else if ( category !== "armor" ) add(`+${v} AC`, { type: "defensive", effect: "acBonus", name: `+${v} AC`, formula: v, trigger: "struck" });
     }
-    const saveM = s.match(/\+\s*(\d+)\s*(?:bonus )?to (?:all )?(?:your )?(?:(\w+) )?saving throws|(?:ac|armor class) and saving throws/);
+    const saveM = s.match(/\+\s*(\d+)\s*(?:bonus )?(?:to |on )?(?:all )?(?:your )?(?:(\w+) )?(?:saving throws|saves(?![a-z]))|(?:ac|armor class) and (?:saving throws|saves(?![a-z]))/);
     if ( saveM && !requirementSentence ) {
       const v = saveM[1] ?? acM?.[1] ?? acM?.[2] ?? "1";
       const ab = saveM[2] ? abilityIn(saveM[2], T) : "";
@@ -437,8 +460,9 @@ export function parseDescription(text, ctx={}) {
 
     // --- Extra damage ---
     {
-      const re = new RegExp(`(?:extra|additional|bonus)\\s+${formulaRe}\\s+([a-z]+)\\s+damage`, "g");
+      const re = new RegExp(`(?:(?:extra|additional|bonus)\\s+${formulaRe}|${formulaRe}\\s+(?:extra|additional|bonus))\\s+([a-z]+)\\s+damage`, "g");
       while ( (m = re.exec(s)) ) {
+        m = [m[0], m[1] ?? m[2], m[3]];
         const t = damageTypesIn(m[2], T)[0];
         if ( !t ) continue;
         const who = creaturesIn(s, T);
@@ -447,10 +471,11 @@ export function parseDescription(text, ctx={}) {
     }
 
     // --- Reach and cover ---
-    if ( (m = s.match(/reach (?:increases|is increased|extends) by (\d+)|(\d+) (?:additional |extra )?feet (?:of|to) (?:your |its )?reach|\+\s*(\d+) feet (?:of )?reach/)) ) {
-      const v = m[1] ?? m[2] ?? m[3];
+    // Only an explicit increase counts: "this glaive has reach" describes the base weapon, which already has it.
+    if ( (m = s.match(/reach[^.;]{0,30}?(?:increases|is increased|extends|is extended) by (\d+)|(\d+) (?:additional |extra )?feet (?:of|to) (?:your |its )?reach|\+\s*(\d+) (?:feet )?(?:of |to )?(?:your |its )?reach|(?:increases?|extends?|adds?|improves?|grants?|gives?) (?:\+\s*)?(?:your |its |the |the weapon's |its weapon's |weapon |the wielder's |wielder's )?reach (?:by |of )?\+?(\d+)|reach\s*\+\s*(\d+)/)) ) {
+      const v = m[1] ?? m[2] ?? m[3] ?? m[4] ?? m[5];
       add(`Reach +${v} ft.`, { type: "offensive", effect: "reachBonus", name: "Increased Reach", formula: v });
-    } else if ( /\b(?:has|gains?) the reach property\b|\bhas reach\b/.test(s) ) add("Reach +5 ft.", { type: "offensive", effect: "reachBonus", name: "Reach", formula: "5" });
+    }
     if ( /ignores? (?:all |total )cover|ignores? total cover/.test(s) ) add("Ignores all cover", { type: "offensive", effect: "ignoreAllCover", name: "Ignore Cover" });
     else if ( /ignores? (?:half (?:cover )?and )?three-quarters cover/.test(s) ) add("Ignores half and three-quarters cover", { type: "offensive", effect: "ignoreThreeQuartersCover", name: "Ignore Cover" });
     else if ( /ignores? half cover/.test(s) ) add("Ignores half cover", { type: "offensive", effect: "ignoreHalfCover", name: "Ignore Cover" });

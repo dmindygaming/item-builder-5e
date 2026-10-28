@@ -20,7 +20,7 @@ import {
   itemHasOwnUse, ruleFromComponent, sizeAfter, ruleHandling, syncRuleEffects
 } from "./rules.mjs";
 
-const MODULE_VERSION = "1.0.9";
+const MODULE_VERSION = "1.0.10";
 /** Returns every Fighting Style feat (cached), set up at init. */
 let fightingStyles = async () => [];
 const { ApplicationV2, DialogV2 } = foundry.applications.api;
