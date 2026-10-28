@@ -182,7 +182,15 @@ export function componentLine(c, { spellName, names={} }={}) {
           ? `Its attacks and effects can make the target ${name.toLowerCase()}`
           : `You are ${name.toLowerCase()} while you have it`;
       }
-      if ( c.effect === "activeEffect" ) return "";
+      if ( c.effect === "activeEffect" ) {
+        // Condition immunity is the one raw Active Effect players need spelled out.
+        if ( c.activeEffectKey === "system.traits.ci.value" && c.activeEffectValue ) {
+          const ct = globalThis.CONFIG?.DND5E?.conditionTypes?.[c.activeEffectValue];
+          const name = ct ? loc(ct.name ?? ct.label, c.activeEffectValue) : c.activeEffectValue;
+          return `You can't be ${String(name).toLowerCase()}`;
+        }
+        return "";
+      }
       return ruleSentence(c, { player: true }).replace(/\.$/, "");
     }
     default:
