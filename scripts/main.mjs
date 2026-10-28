@@ -564,7 +564,8 @@ class ItemBuilder5e extends ApplicationV2 {
     el.querySelector("[data-describe-read]")?.addEventListener("click",e=>{
       e.preventDefault(); this._capture();
       if(!this.describe.text.trim())return ui.notifications.warn("Write or paste a description first.");
-      this.describe.result=parseDescription(this.describe.text,this._describeContext());
+      try{this.describe.result=parseDescription(this.describe.text,this._describeContext());}
+      catch(err){console.error(`${MODULE_ID} | Describe It failed`,err);return ui.notifications.error("Item Builder couldn't read that description. See the console (F12) for details.");}
       if(!this.describe.result.findings.length)ui.notifications.info("Item Builder didn't recognize any rules in that description. Try wording like “resistance to fire damage” or “cast Misty Step once per long rest”.");
       this.render({force:true});
     });
@@ -873,7 +874,9 @@ class ItemBuilder5e extends ApplicationV2 {
 
   /** Everything the description reader needs to know about this world. */
   _describeContext(){
-    const labels=o=>Object.fromEntries(Object.entries(o??{}).map(([k,v])=>[k,loc(v,k)]));
+    // D&D5e config entries are a string, or an object with a label (or a name, for conditions).
+    const label=(v,k)=>{const raw=typeof v==="string"?v:(v?.label??v?.name);return typeof raw==="string"?(game.i18n.localize(raw)||k):k;};
+    const labels=o=>Object.fromEntries(Object.entries(o??{}).filter(([,v])=>!v?.pseudo).map(([k,v])=>[k,label(v,k)]));
     const b=this.builderData;
     return {
       category:b.category, tiers:b.tiers.map(t=>t.name),
