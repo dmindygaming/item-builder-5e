@@ -171,28 +171,48 @@ export function parseDescription(text, ctx={}) {
   let category = ctx.category ?? "";
   const list = sentences(text, ctx.tiers ?? []);
 
-  // A short first line with no rules in it is the item's name.
-  const first = list[0]?.text.replace(/[.:]$/, "").trim() ?? "";
-  const words = first.split(/\s+/);
-  const minor = /^(?:of|the|a|an|and|or|in|on|to|with)$/i;
-  const capitalised = words.filter(w => !minor.test(w)).filter(w => /^[A-Z]/.test(w)).length;
-  if ( list.length > 1 && first && words.length <= 6 && capitalised >= Math.ceil(words.filter(w => !minor.test(w)).length / 2)
-    && !/\d|\b(?:cast|you|your|has|have|is|are|can|named|called|known as)\b|[(),+]/i.test(first) ) {
-    findings.push({ label: `Name: ${first}`, tier: 1, sentence: list[0].text, basics: { name: first } });
-    list.shift();
-  }
-  let pendingUses = null;   // "The cloak has 3 charges..." waiting for the spells that use them.
-
+  // Base items: "longsword", "long sword", "long-sword" all match Longsword; the earliest mention wins.
+  const SPLITS = /(sword|axe|bow|hammer|pick|star|staff|spear|blade|mail|plate|crossbow)$/;
+  const nameRe = n => {
+    const forms = new Set([n]);
+    const m = n.match(SPLITS);
+    if ( m && !n.includes(" ") && n.length > m[1].length + 2 ) forms.add(`${n.slice(0, -m[1].length)}[ -]?${m[1]}`);
+    forms.add(n.replace(/ /g, "[ -]?"));
+    return new RegExp(`(?<![a-z])(?:${[...forms].map(f => f.includes("[") ? f : reEsc(f)).join("|")})(?:s|es)?(?![a-z])`);
+  };
   const findBase = s => {
     const pools = [["weapon", ctx.weapons ?? []], ["armor", ctx.armor ?? []], ["shield", ctx.shields ?? []]];
     let best = null;
     for ( const [kind, pool] of pools ) for ( const e of pool ) {
       const n = String(e.name ?? "").toLowerCase();
       if ( n.length < 3 ) continue;
-      if ( new RegExp(`(?<![a-z])${reEsc(n)}(?:s|es)?(?![a-z])`).test(s) && (!best || n.length > best.n.length) ) best = { kind, e, n };
+      const hit = s.match(nameRe(n));
+      if ( !hit ) continue;
+      // Earliest mention wins; for the same spot, the longer name ("hand crossbow" over "crossbow").
+      if ( !best || hit.index < best.at || (hit.index === best.at && n.length > best.n.length) ) best = { kind, e, n, at: hit.index };
     }
     return best;
   };
+
+  // "Longsword." on its own is the base item, not the name.
+  const isJustBase = t => {
+    const b = findBase(norm(t));
+    const letters = x => String(x).toLowerCase().replace(/^(?:an?|the)\s+/, "").replace(/[^a-z]/g, "").replace(/e?s$/, "");
+    return !!b && letters(norm(t)) === letters(b.n);
+  };
+
+  // A short first line with no rules in it is the item's name.
+  const first = list[0]?.text.replace(/[.:]$/, "").trim() ?? "";
+  const words = first.split(/\s+/);
+  const minor = /^(?:of|the|a|an|and|or|in|on|to|with)$/i;
+  const capitalised = words.filter(w => !minor.test(w)).filter(w => /^[A-Z]/.test(w)).length;
+  if ( list.length > 1 && first && words.length <= 6 && capitalised >= Math.ceil(words.filter(w => !minor.test(w)).length / 2)
+    && !/\d|\b(?:cast|you|your|has|have|is|are|can|named|called|known as)\b|[(),+:]/i.test(first) && !isJustBase(first) ) {
+    findings.push({ label: `Name: ${first}`, tier: 1, sentence: list[0].text, basics: { name: first } });
+    list.shift();
+  }
+  let pendingUses = null;   // "The cloak has 3 charges..." waiting for the spells that use them.
+
 
   for ( const { text: original, tier } of list ) {
     const s = norm(original);
@@ -289,9 +309,10 @@ export function parseDescription(text, ctx={}) {
     }
     const baseKnown = () => [...findings, ...found].some(f => f.basics?.baseUuid);
     // "Greataxe named Sun Cleaver" / "A flaming longsword": the base item named at the start of the description.
-    const lead = s.split(/[.,;:]/)[0];
-    const leadBase = !baseKnown() && (named || findings.every(f => f.basics)) && lead.split(" ").length <= 8 ? findBase(lead) : null;
-    const base = typed ? findBase(typed[2]) : (enh ? findBase(enh[2]) : null) ?? leadBase;
+    // Otherwise the first base item mentioned anywhere (tier 1), ignoring comparisons such as "like a dagger".
+    const plain = s.replace(/\b(?:like|as|than|resembl\w*|shaped like)\s+(?:an?|the)\s+[a-z' -]+?(?=[,.;]|$)/g, " ");
+    const anyBase = tier === 1 && !baseKnown() ? findBase(plain) : null;
+    const base = typed ? findBase(typed[2]) : (enh ? findBase(enh[2]) : null) ?? anyBase;
     if ( base ) {
       const cat = base.kind === "weapon" ? "weapon" : "armor";
       category = cat;

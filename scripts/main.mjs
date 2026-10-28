@@ -22,7 +22,7 @@ import {
   itemHasOwnUse, ruleFromComponent, sizeAfter, ruleHandling, syncRuleEffects
 } from "./rules.mjs";
 
-const MODULE_VERSION = "1.1.2";
+const MODULE_VERSION = "1.1.3";
 /** Returns every Fighting Style feat (cached), set up at init. */
 let fightingStyles = async () => [];
 /** Every feat (cached), set up at init. */
