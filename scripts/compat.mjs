@@ -258,6 +258,23 @@ export function rollModeKeys(target, { ability="", skill="" }={}) {
   }
 }
 
+/** Initiative bonus field: `init.roll.bonus` in D&D5e 6, `init.bonus` in 5.3. */
+export function initiativeBonusKey() {
+  return isDnd5e6() ? "system.attributes.init.roll.bonus" : "system.attributes.init.bonus";
+}
+
+/** Initiative component formula: a number, the proficiency bonus, an ability modifier, or both. */
+export function initiativeFormula(c) {
+  const ab = c?.ability || "dex";
+  switch ( c?.bonusMode ) {
+    case "prof": return "@prof";
+    case "ability": return `@abilities.${ab}.mod`;
+    case "profAbility": return `@prof + @abilities.${ab}.mod`;
+    case "none": return "";
+    default: return String(c?.value ?? "").trim();
+  }
+}
+
 /** Active Effect value for a 2024 Half-ASI (+1, capped at 20). */
 export function halfAsiChange(ability) {
   // D&D5e 6.0 documents the `delta <= limit` syntax for capped additions.

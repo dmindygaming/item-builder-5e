@@ -32,7 +32,7 @@ export const HELP_SECTIONS = [
       ${where("Builder → <b>Basics</b> tab")}
       <dl>
         <dt>Name</dt><dd>The item's name.</dd>
-        <dt>Item Category</dt><dd>Weapon, Armor, Spellcasting Focus, Other Equipment, Consumable, or Feat / Feature. The other fields change to match.</dd>
+        <dt>Item Category</dt><dd>Weapon, Armor, Spellcasting Focus, Other Equipment, Consumable, Feat / Feature, or <a data-jump="background">Background</a>. The other fields change to match.</dd>
         <dt>Weapon Type / Armor Type / Spellcasting Class</dt><dd>Narrows the Base Item list (weapons, armor and shields, or the foci a class can use).</dd>
         <dt>Base Item</dt><dd>Starts from a real D&amp;D5e item (Longsword, Plate, Arcane Focus…), keeping its native data. Click the list and type to search; arrow keys and Enter pick a result.</dd>
         <dt>Damage Dice, Damage Type, Versatile Dice</dt><dd>Weapons only. Filled from the base weapon; change them to make a custom weapon.</dd>
@@ -40,6 +40,26 @@ export const HELP_SECTIONS = [
         <dt>Rarity, Attunement, Value</dt><dd>Stored in D&amp;D5e's own fields. Setting attunement or a rarity also marks the item Magical, which D&amp;D5e needs for attunement to count.</dd>
         <dt>2024 Feat Type, Required Level, Required Ability, Minimum Ability Score</dt><dd>Feats only. Prerequisites go in the feat's D&amp;D5e Requirements field.</dd>
       </dl>`
+  },
+  {
+    id: "background", title: "Backgrounds", icon: "fa-scroll",
+    body: `
+      ${where("Builder → Basics → Item Category: <b>Background</b>")}
+      <p>Makes a 2024 background built the same way as D&amp;D5e's own:</p>
+      <dl>
+        <dt>Ability Scores</dt><dd>Tick three. When the background is added, the player increases one by 2 and another by 1, or all three by 1 (maximum 20).</dd>
+        <dt>Skill Proficiency (×2), Tool Proficiency</dt><dd>Granted when the background is added. A tool can be a specific tool, or “Any …” to let the player pick one from that group (such as any Artisan's Tools).</dd>
+        <dt>Origin Feat</dt><dd>Granted when the background is added. Your own Item Builder feats are in the list.</dd>
+        <dt>Starting Gold, Languages</dt><dd>Gold goes in D&amp;D5e's Wealth field; languages are Common plus two Standard languages the player chooses.</dd>
+      </dl>
+      <p>D&amp;D5e asks the player for these choices when the background is dropped on a character. Starting equipment can be added on the background's own sheet. Components such as senses or rule effects can be added too. See <a data-jump="charoptions">Character Options compendium</a> for where players find it.</p>`
+  },
+  {
+    id: "charoptions", title: "Character Options Compendium", icon: "fa-box-archive",
+    body: `
+      ${where("Compendium Packs sidebar → <b>Item Builder Character Options</b>")}
+      <p>Every feat and background you make with Item Builder is copied into this world compendium, which players can see. That is where D&amp;D5e's level-up feat browser and compendium browser look, so your feats appear when a character gains a feat, and your backgrounds when one is made. The compendium is created the first time you save a feat or background, and feats made before it existed are copied in automatically.</p>
+      <p>The copy in the <b>Items</b> sidebar is the one you edit; saving it (or changing its tier) refreshes the compendium copy. Editing the compendium copy in Item Builder opens the sidebar original instead. Deleting the sidebar feat leaves the compendium copy in place.</p>`
   },
   {
     id: "description", title: "Description Tab", icon: "fa-align-left",
@@ -53,7 +73,7 @@ export const HELP_SECTIONS = [
       ${where("Builder → <b>Components</b> tab → buttons at the top")}
       <p>Components are the item's mechanics. The add buttons are grouped into three rows:</p>
       <ul>
-        <li><b>Character Traits</b> — <a data-jump="movement">Movement</a>, <a data-jump="senses">Senses</a>, <a data-jump="ability">Ability Score</a>, <a data-jump="skill">Skill</a>, <a data-jump="fightingstyle">Fighting Style</a>, and <a data-jump="halfasi">2024 Half-ASI</a> (feats only).</li>
+        <li><b>Character Traits</b> — <a data-jump="movement">Movement</a>, <a data-jump="senses">Senses</a>, <a data-jump="ability">Ability Score</a>, <a data-jump="skill">Skill</a>, <a data-jump="fightingstyle">Fighting Style</a>, <a data-jump="grantfeat">Feat</a>, <a data-jump="initiative">Initiative</a>, and <a data-jump="halfasi">2024 Half-ASI</a> (feats only).</li>
         <li><b>Actions</b> — <a data-jump="spell">Spell</a>, <a data-jump="reaction">Reaction</a>, <a data-jump="light">Light</a>, <a data-jump="rulestext">Rules Text</a>.</li>
         <li><b>Restrictions</b> — <a data-jump="requirement">Use Requirement</a>.</li>
         <li><b>Rule Effects</b> — <a data-jump="offensive">Offensive</a>, <a data-jump="defensive">Defensive</a>, <a data-jump="healing">Healing / Recovery</a>, <a data-jump="utility">Utility / Control</a>.</li>
@@ -102,6 +122,18 @@ export const HELP_SECTIONS = [
     body: `${where("Components → Character Traits → <b>Fighting Style</b>")}
       <p>Grants a Fighting Style feat. <b>Who Chooses</b>: the GM picks one style, or the player chooses — from the styles you tick, or from every Fighting Style in your compendiums if you tick none.</p>
       <p>On a tier-1 feat it is written as D&amp;D5e advancement, so D&amp;D5e adds the style (or asks the player) when the feat is dropped on a character. On other items, or at higher tiers, Item Builder adds it when the character gets the item or reaches the tier, and removes it with the item.</p>`
+  },
+  {
+    id: "grantfeat", title: "Feat", icon: "fa-medal", parent: "components",
+    body: `${where("Components → Character Traits → <b>Feat</b>")}
+      <p>Grants a feat. <b>Who Chooses</b>: the GM picks one feat, or the player chooses — from any Origin, General, Fighting Style or Epic Boon feat, any feat at all, or only the feats you list. Feats you made with Item Builder are included.</p>
+      <p>On a tier-1 feat it is written as D&amp;D5e advancement, so D&amp;D5e adds the feat (or asks the player) when the feat is dropped on a character. On items it follows <b>Active While</b>: the feat is on the character while the item is owned, equipped or attuned, and removed when it isn't. A player's choice is asked for once and remembered. When a player chooses, feats above their level are left out.</p>
+      <p class="ibh-note">A granted feat's own advancement (such as an ability increase it offers) is not run; add it on the character if needed.</p>`
+  },
+  {
+    id: "initiative", title: "Initiative", icon: "fa-stopwatch", parent: "components",
+    body: `${where("Components → Character Traits → <b>Initiative</b>")}
+      <p>A bonus to Initiative — a fixed number, the proficiency bonus (like the Alert feat), an ability modifier, or proficiency bonus plus an ability modifier — and optionally advantage on Initiative rolls. It is an Active Effect on the character, so it works even with Item Builder disabled.</p>`
   },
   {
     id: "halfasi", title: "2024 Half-ASI", icon: "fa-arrow-up-1-9", parent: "components",

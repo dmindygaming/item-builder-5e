@@ -107,10 +107,13 @@ function skillsIn(phrase, T) {
   let rest = phrase;
   for ( const [k, l] of T.skills ) {
     const re = new RegExp(word(reEsc(l)));
-    if ( re.test(rest) ) { found.push(k); rest = rest.replace(re, " "); }
+    const at = rest.search(re);
+    if ( at >= 0 ) { found.push([at, k]); rest = rest.replace(re, m => " ".repeat(m.length)); }
   }
-  return found;
+  return found.sort((a, b) => a[0] - b[0]).map(([, k]) => k);
 }
+/** "sleight of hand" -> "Sleight of Hand". */
+const titled = t => String(t).replace(/\b[a-z]/g, c => c.toUpperCase()).replace(/\b(Of|And|The|In)\b/g, w => w.toLowerCase()).replace(/^./, c => c.toUpperCase());
 function creaturesIn(phrase, T) {
   return T.creatures.filter(([k, l]) => {
     const stem = l.replace(/y$/, "(?:y|ies)");
@@ -222,12 +225,53 @@ export function parseDescription(text, ctx={}) {
     else if ( rarity && tier > 1 && /\b(?:becomes?|is now|rarity)\b/.test(s) ) add(`Tier ${tier} rarity: ${cap(rarity[0])}`, null, { tierRarity: { tier, rarity: rarity[1] } });
 
     // --- "Origin Feat named Martial Savant", "General feat (requires level 4)" ---
-    const featLine = tier === 1 && s.match(/^(?:an? |this is an? |this )?(origin|general|epic boon|fighting style)?\s*(?:feat|feature)\b(?! of your choice)/);
-    if ( featLine && !/\b(?:gain|gains|adds?|grants?|choose|choice)\b/.test(s.split(/\b(?:named|called)\b/)[0]) ) {
+    const featMatch = tier === 1 && category !== "background" && !/^(?:an? )?(?:origin |general )?feat\s*:/.test(s) && s.match(/^(?:an? |this is an? |this )?(origin|general|epic boon|fighting style)?\s*(?:feat|feature)\b(?! of your choice)/);
+    const featLine = featMatch && !/\b(?:gain|gains|adds?|grants?|gives?|lets?|choose|choice)\b/.test(s.split(/\b(?:named|called)\b/)[0]) ? featMatch : null;
+    if ( featLine ) {
       const featType = { origin: "origin", general: "general", "epic boon": "epicBoon", "fighting style": "fightingStyle" }[featLine[1] ?? ""] ?? "";
       category = "feat";
       add(`Category: ${featType ? featLine[1].split(" ").map(cap).join(" ") + " " : ""}Feat`, null, { category: "feat", ...(featType ? { featType } : {}) });
     }
+    // --- Backgrounds: "Background named Sellsword", then its parts ---
+    if ( tier === 1 && category !== "background" && /^(?:an? |this is an? |this |the )?background\b/.test(s) ) {
+      category = "background";
+      add("Category: Background", null, { category: "background" });
+    }
+    if ( category === "background" ) {
+      let bgHit = false;
+      if ( (m = s.match(/ability scores?:?\s*([^.;]+)/)) || (m = s.match(/increase (?:your )?((?:[a-z]+,? )+(?:and|or) [a-z]+)(?: scores?)?/)) ) {
+        const picks = T.abilities.filter(([, l]) => new RegExp(`(?<![a-z])${reEsc(l)}(?![a-z])`).test(m[1])).map(([k]) => k).slice(0, 3);
+        if ( picks.length ) { add(`Ability scores: ${picks.map(k => cap(T.abilities.find(([a]) => a === k)[1])).join(", ")}`, null, { bgAbilities: picks }); bgHit = true; }
+      }
+      if ( /skill proficienc|proficien(?:cy|t) in/.test(s) ) {
+        const sk = skillsIn(s.replace(/tool proficienc[^.;]*/, ""), T).slice(0, 2);
+        if ( sk.length ) { add(`Skill proficiencies: ${sk.map(k => titled(T.skills.find(([a]) => a === k)[1])).join(", ")}`, null, { bgSkills: sk }); bgHit = true; }
+      }
+      if ( (m = s.match(/tool proficienc(?:y|ies):?\s*([^.;]+)|proficien(?:cy|t) with (?:an? |the )?([^.;]+)/)) ) {
+        const phrase = (m[1] ?? m[2]).replace(/[’]/g, "'");
+        const tools = (ctx.tools ?? []).filter(t => !t.key.endsWith(":*"));
+        const groups = (ctx.tools ?? []).filter(t => t.key.endsWith(":*"));
+        const choice = /\b(?:one kind of|any|of your choice|choose|a type of)\b/.test(phrase);
+        const norm2 = l => l.toLowerCase().replace(/^any\s+/, "").replace(/[’]/g, "'");
+        const hit = (choice ? groups : []).concat(tools).find(t => phrase.includes(norm2(t.label)) || phrase.includes(norm2(t.label).replace(/s$/, "")));
+        if ( hit ) { add(`Tool proficiency: ${hit.label}`, null, { bgTool: hit.key }); bgHit = true; }
+      }
+      if ( (m = s.match(/(?:origin )?feat:\s*([^.;]+)/)) || (m = s.match(/\b(?:gain|gains|grants?|gives?)\s+(?:you\s+)?the\s+([^.;]+?)\s+feat\b/)) ) {
+        const phrase = m[1];
+        const f = (ctx.feats ?? []).filter(x => phrase.includes(String(x.name).toLowerCase())).sort((a, b) => b.name.length - a.name.length)[0];
+        if ( f ) { add(`Origin feat: ${f.name}`, null, { bgFeat: f.uuid }); bgHit = true; }
+      }
+      if ( /\d+\s*gp\b/.test(s) && /equipment|gold|wealth|starting/.test(s) ) {
+        // "…and 15 GP; or 50 GP": the gold-only alternative is the starting wealth.
+        const alt = s.match(/\bor\s*(?:\(b\)\s*)?(\d+)\s*gp\b/);
+        const all = [...s.matchAll(/(\d+)\s*gp\b/g)].map(x => x[1]);
+        const gp = alt?.[1] ?? all.at(-1);
+        add(`Starting gold: ${gp} GP`, null, { bgWealth: gp }); bgHit = true;
+      }
+      if ( /\blanguages?\b/.test(s) ) { add("Languages: Common + two of the player's choice", null, { bgLanguages: true }); bgHit = true; }
+      if ( bgHit ) { findings.push(...found); continue; }
+    }
+
     // Feat prerequisites: "Prerequisite: level 4", "Prerequisite: Strength 13 or higher", "requires level 4".
     if ( category === "feat" || featLine ) {
       if ( (m = s.match(/(?:requires?|prerequisites?:?)\s+(?:character )?level (\d+)|level (\d+)\+?\s*(?:required|prerequisite)|prerequisites?:?[^.;]*?(\d+)(?:st|nd|rd|th) level/)) ) add(`Required level ${m[1] ?? m[2] ?? m[3]}`, null, { levelRequirement: m[1] ?? m[2] ?? m[3] });
@@ -368,6 +412,40 @@ export function parseDescription(text, ctx={}) {
       }
     }
 
+    // --- Granted feats: "you gain the Alert feat", "an Origin feat of your choice" ---
+    if ( /\bfeats?\b/.test(s) && !featLine && !/fighting style/.test(s) ) {
+      const named = (ctx.feats ?? []).filter(f => {
+        const n = String(f.name).toLowerCase();
+        return n.length >= 3 && new RegExp(`(?<![a-z])${reEsc(n)}(?: feat)?(?![a-z])`).test(s);
+      }).sort((a, b) => b.name.length - a.name.length);
+      const choiceRe = /\b(?:(origin|general|epic boon)\s+)?feats?\s+of\s+(?:your|their|the player's)\s+choice|\bchoose\s+(?:an?|one)\s+(?:(origin|general|epic boon)\s+)?feat\b|\b(?:player's|your)\s+choice\s+of\s+(?:an?\s+)?(?:(origin|general|epic boon)\s+)?feat\b/;
+      if ( (m = s.match(choiceRe)) ) {
+        const kind = m[1] ?? m[2] ?? m[3] ?? "";
+        const poolType = { origin: "origin", general: "general", "epic boon": "epicBoon" }[kind] ?? "any";
+        const listed = named.length > 1 ? named : [];
+        add(`Feat: player's choice of ${listed.length ? listed.map(f => f.name).join(", ") : kind ? `any ${cap(kind)} feat` : "any feat"}`,
+          { type: "grantFeat", name: "Feat", mode: "player", poolType: listed.length ? "list" : poolType, poolUuids: listed.map(f => f.uuid) });
+      } else if ( named.length && /\b(?:gain|gains|grants?|gives?|have|has|learn|learns|adds?)\b/.test(s) ) {
+        add(`Feat: ${named[0].name}`, { type: "grantFeat", name: named[0].name, mode: "gm", featUuid: named[0].uuid, poolType: "origin", poolUuids: [] });
+      }
+    }
+
+    // --- Initiative: "+2 to initiative", "add your proficiency bonus to initiative" ---
+    {
+      let init = null;
+      if ( (m = s.match(/\+\s*(\d+)\s*(?:bonus )?(?:to |on )?(?:your )?initiative|initiative (?:rolls? )?(?:\+\s*|(?:increases |bonus )?(?:by |of )\+?)(\d+)/)) ) init = { bonusMode: "fixed", value: m[1] ?? m[2] };
+      else if ( /\badd(?:s)? (?:your )?proficiency bonus (?:to|on) (?:your )?initiative/.test(s) ) {
+        const ab = s.match(/proficiency bonus (?:plus|and) (?:your )?([a-z]+) modifier/);
+        init = ab && abilityIn(ab[1], T) ? { bonusMode: "profAbility", ability: abilityIn(ab[1], T) } : { bonusMode: "prof" };
+      } else if ( (m = s.match(/\badd(?:s)? (?:your )?([a-z]+) modifier (?:to|on) (?:your )?initiative/)) && abilityIn(m[1], T) ) init = { bonusMode: "ability", ability: abilityIn(m[1], T) };
+      if ( init && !requirementSentence ) {
+        const adv = /advantage on (?:your )?initiative/.test(s);
+        const f = { fixed: `+${init.value}`, prof: "+ proficiency bonus", ability: `+ ${cap(T.abilities.find(([k]) => k === init.ability)?.[1] ?? "")} modifier`, profAbility: "+ proficiency bonus + ability modifier" }[init.bonusMode];
+        add(`Initiative ${f}${adv ? " and advantage" : ""}`, { type: "initiative", name: "Initiative", value: "2", ability: "dex", advantage: adv, ...init });
+        found.initiativeAdv = adv;
+      }
+    }
+
     // --- Senses ---
     for ( const sense of SENSES ) {
       if ( (m = s.match(new RegExp(`${sense}(?: out)?(?: to)?(?: a range of)?(?: with a range of)? (\\d+)`))) || (m = s.match(new RegExp(`(\\d+) feet (?:of )?${sense}`))) ) {
@@ -450,7 +528,7 @@ export function parseDescription(text, ctx={}) {
       const expert = /^expertise|double (?:your )?proficiency/.test(clause);
       for ( const k of skillsIn(clause.split(/[.;]/)[0], T) ) {
         const label = T.skills.find(([key]) => key === k)[1];
-        add(`${expert ? "Expertise" : "Proficiency"}: ${cap(label)}`, { type: "skill", name: `${cap(label)} ${expert ? "Expertise" : "Training"}`, skill: k, proficiency: expert ? "2" : "1" });
+        add(`${expert ? "Expertise" : "Proficiency"}: ${titled(label)}`, { type: "skill", name: `${titled(label)} ${expert ? "Expertise" : "Training"}`, skill: k, proficiency: expert ? "2" : "1" });
       }
     }
 
@@ -460,7 +538,8 @@ export function parseDescription(text, ctx={}) {
       if ( kind === "advantage" && /saving throws? against (?:spells|magic)/.test(p) ) {
         const magic = /magical effects|magic\b/.test(p);
         add(`Advantage on saves against spells${magic ? " and magic" : ""}`, { type: "defensive", effect: "saveAdvantage", name: "Magic Resistance", trigger: magic ? "saveAgainstMagic" : "saveAgainstSpell", ability: "" });
-      } else if ( /initiative/.test(p) ) add(`${cap(kind)} on initiative`, { type: "utility", effect: kind, name: `${cap(kind)}: Initiative`, rollTarget: "initiative" });
+      } else if ( /initiative/.test(p) && found.initiativeAdv && kind === "advantage" ) { /* part of the Initiative suggestion */ }
+      else if ( /initiative/.test(p) ) add(`${cap(kind)} on initiative`, { type: "utility", effect: kind, name: `${cap(kind)}: Initiative`, rollTarget: "initiative" });
       else if ( /concentration/.test(p) ) add(`${cap(kind)} on concentration saves`, { type: "utility", effect: kind, name: `${cap(kind)}: Concentration`, rollTarget: "concentration" });
       else if ( /attack rolls?/.test(p) ) {
         if ( kind === "advantage" ) {
@@ -609,6 +688,10 @@ export function parseDescription(text, ctx={}) {
         if ( i >= 0 ) leftovers.splice(i, 1);
       }
     }
+    // "While attuned…" / "while worn…" sets when the suggestion applies.
+    const when = /\bwhile (?:you(?:'re| are) )?attuned\b|\bwhile attuned\b|\bwhen attuned\b/.test(s) ? "attuned"
+      : /\bwhile (?:you )?(?:wear|wearing|worn|wield|wielding|wielded|hold|holding|held|equipped)\b/.test(s) ? "equipped" : "";
+    if ( when ) for ( const f of found ) if ( f.component && f.component.type !== "light" ) f.component.activation = when;
     if ( found.length ) findings.push(...found);
     else leftovers.push({ text: original, tier });
   }

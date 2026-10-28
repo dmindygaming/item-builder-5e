@@ -7,6 +7,7 @@
  * The list is hidden in chat cards (see styles), which keep only the GM's text.
  */
 import { MODULE_ID, usesLabel } from "./compat.mjs";
+import { backgroundLines } from "./background.mjs";
 import { RULE_CATEGORIES, ROLL_TARGETS, participantLabels, triggerOptions } from "./rules.mjs";
 import { reactionSummary } from "./reactions.mjs";
 import { requirementLine } from "./requirements.mjs";
@@ -130,6 +131,8 @@ function usesText(c) {
 }
 
 /** One description line for a component, or "" if it adds nothing for the player. */
+const abilityWord = k => loc(globalThis.CONFIG?.DND5E?.abilities?.[k], k || "Dexterity");
+
 export function componentLine(c, { spellName, names={} }={}) {
   const ft = v => `${Number(v) || 0} ft.`;
   switch ( c.type ) {
@@ -173,6 +176,21 @@ export function componentLine(c, { spellName, names={} }={}) {
       const pool = (c.poolUuids ?? []).map(u => names[u]).filter(Boolean);
       return `You gain a Fighting Style of your choice${pool.length ? ` (${listText(pool)})` : ""}`;
     }
+    case "grantFeat": {
+      const when = { equipped: " while you wear or wield it", attuned: " while you are attuned to it" }[c.activation] ?? "";
+      if ( c.mode === "gm" ) return names[c.featUuid] ? `You gain the ${names[c.featUuid]} feat${when}` : "";
+      const kind = { origin: "an Origin feat", general: "a General feat", fightingStyle: "a Fighting Style feat", epicBoon: "an Epic Boon feat" }[c.poolType] ?? "a feat";
+      const pool = c.poolType === "list" ? (c.poolUuids ?? []).map(u => names[u]).filter(Boolean) : [];
+      return `You gain ${kind} of your choice${pool.length ? ` (${listText(pool)})` : ""}${when}`;
+    }
+    case "initiative": {
+      const f = { prof: "your proficiency bonus", ability: `your ${abilityWord(c.ability)} modifier`, profAbility: `your proficiency bonus plus your ${abilityWord(c.ability)} modifier` }[c.bonusMode];
+      const n = Number(c.value) || 0;
+      const bonus = c.bonusMode === "none" ? "" : f ? `You add ${f} to your Initiative rolls` : n ? `${n > 0 ? "+" : ""}${n} bonus to Initiative` : "";
+      const adv = c.advantage ? "advantage on Initiative rolls" : "";
+      if ( bonus && adv ) return `${bonus}, and you have ${adv}`;
+      return bonus || (adv ? `You have ${adv}` : "");
+    }
     case "conditional": {
       if ( c.effect === "statusEffect" ) {
         if ( !c.status ) return "";
@@ -201,6 +219,13 @@ export function componentLine(c, { spellName, names={} }={}) {
 /** The description lines for an item at a tier. */
 export function propertyLines(flags, tier, { spellNames={} }={}) {
   const lines = [];
+  if ( flags?.category === "background" ) {
+    const cfgOf = k => globalThis.CONFIG?.DND5E?.[k] ?? {};
+    const toolLabel = key => { try { return globalThis.dnd5e?.documents?.Trait?.keyLabel?.(key) || key.split(":").pop(); } catch { return key.split(":").pop(); } };
+    lines.push(...backgroundLines(flags.background, {
+      ability: k => loc(cfgOf("abilities")[k], k), skill: k => loc(cfgOf("skills")[k], k), tool: toolLabel, names: spellNames
+    }));
+  }
   const bonus = Number(flags?.enhancementBonus) || 0;
   if ( bonus > 0 ) {
     if ( flags.category === "weapon" ) lines.push(`+${bonus} bonus to attack and damage rolls made with this weapon`);
@@ -239,10 +264,14 @@ export async function refreshItemDescription(item) {
   const tier = Number(flags.currentTier ?? 1) || 1;
   const spellNames = {};
   for ( const c of flags.components ?? [] ) {
-    const uuids = c.type === "spell" ? [c.spellUuid] : c.type === "fightingStyle" ? [c.styleUuid, ...(c.poolUuids ?? [])] : [];
+    const uuids = c.type === "spell" ? [c.spellUuid] : c.type === "fightingStyle" ? [c.styleUuid, ...(c.poolUuids ?? [])]
+      : c.type === "grantFeat" ? [c.featUuid, ...(c.poolType === "list" ? (c.poolUuids ?? []) : [])] : [];
     for ( const u of uuids.filter(Boolean) ) {
       try { spellNames[u] = (await fromUuid(u))?.name ?? ""; } catch { /* missing document */ }
     }
+  }
+  if ( flags.background?.featUuid ) {
+    try { spellNames[flags.background.featUuid] = (await fromUuid(flags.background.featUuid))?.name ?? ""; } catch { /* missing */ }
   }
   const tiers = flags.tiers ?? [];
   const tiered = tiers.length > 1 && (flags.components ?? []).some(c => (Number(c.tier) || 1) > 1);
