@@ -2,6 +2,14 @@
 
 All notable changes to Item Builder 5e.
 
+## v1.1.2 Backgrounds, Feat component, Initiative, Character Options compendium
+
+- **Backgrounds** (Basics → Item Category: Background): build a 2024 background the way D&D5e's own are made: three ability scores (+2/+1 or +1/+1/+1, max 20), two skill proficiencies, a tool proficiency (a set tool or the player's pick from a group), an Origin feat, languages (Common + two of choice) and starting gold. D&D5e runs it all when the background is dropped on a character. Custom Origin feats now work the standard way, through a background.
+- **Character Options compendium**: every feat and background made with Item Builder is copied into the player-visible world compendium "Item Builder Character Options", so they show up in D&D5e's level-up feat browser and compendium browser. Feats made earlier are copied in automatically. The Items-sidebar copy stays the one you edit; saving or tiering it refreshes the compendium copy.
+- **Feat** component (Components → Character Traits): an item or feat grants a feat, picked by the GM or chosen by the player (any Origin / General / Fighting Style / Epic Boon feat, any feat, or a list you set). On tier-1 feats it is D&D5e advancement; on items it follows Active While (owned / equipped / attuned) and is removed when the item isn't active. A player's choice is remembered.
+- **Initiative** component (Components → Character Traits): a bonus to Initiative (fixed number, proficiency bonus, ability modifier, or both) and optional advantage, as a native Active Effect (D&D5e 5.3 and 6).
+- Describe It reads backgrounds ("Background named Sellsword. Ability Scores: Strength, Dexterity, Constitution. Skill Proficiencies: …. Tool Proficiency: …. Origin Feat: …. … or 50 GP."), granted feats ("you gain the Alert feat", "an Origin feat of your choice", "a feat of your choice: Alert, Lucky or Tough"), initiative ("+2 to initiative", "add your proficiency bonus to initiative"), and "while attuned" / "while worn" for when a suggestion applies.
+
 ## v1.1.1 Describe It reads feats
 
 - "Origin Feat named Martial Savant" (also General, Fighting Style and Epic Boon) sets the item to a Feat of that type and names it.
