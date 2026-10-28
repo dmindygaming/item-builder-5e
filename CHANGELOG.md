@@ -2,6 +2,11 @@
 
 All notable changes to Item Builder 5e.
 
+## v1.0.10 Describe It reads casual wording
+
+- Describe It now understands shorthand such as "Greataxe named Sun Cleaver", "+2 weapon", "2d8 additional radiant damage on undead", "Increases reach by 10 feet", "Reach +5", "Strength becomes 21", "Speed +10 ft.", "+1 to saves", "gets +1 AC" and "Fireball 1/day".
+- A sentence that only says a weapon has reach ("this glaive has reach") no longer suggests extra reach; only an actual increase does.
+
 ## v1.0.9 Describe It
 
 - **Describe It** (Components tab, above the add buttons): write the item in plain English and click **Read Description**. Item Builder suggests the matching components and basic settings: name, base item, rarity, attunement, enhancement bonus, senses, speeds, ability scores, skills, Fighting Styles, spells with their uses or charges, light, reactions, resistances and immunities, AC/save/attack bonuses, extra damage (against a creature type), advantage and disadvantage, reach, cover, size, healing, and use requirements. Lines starting with a tier name ("Awakened:") put what follows at that tier.
