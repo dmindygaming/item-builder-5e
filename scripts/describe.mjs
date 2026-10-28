@@ -10,6 +10,7 @@ import { MODULE_ID, usesLabel } from "./compat.mjs";
 import { RULE_CATEGORIES, ROLL_TARGETS, participantLabels, triggerOptions } from "./rules.mjs";
 import { reactionSummary } from "./reactions.mjs";
 import { requirementLine } from "./requirements.mjs";
+import { lightLine } from "./light.mjs";
 
 const cfg = (path, fallback={}) => foundry.utils.getProperty(globalThis.CONFIG?.DND5E ?? {}, path) ?? fallback;
 const loc = (raw, fallback="") => game.i18n.localize(raw?.label ?? raw ?? fallback) || fallback;
@@ -129,7 +130,7 @@ function usesText(c) {
 }
 
 /** One description line for a component, or "" if it adds nothing for the player. */
-export function componentLine(c, { spellName }={}) {
+export function componentLine(c, { spellName, names={} }={}) {
   const ft = v => `${Number(v) || 0} ft.`;
   switch ( c.type ) {
     case "movement": {
@@ -165,6 +166,13 @@ export function componentLine(c, { spellName }={}) {
       return String(c.text ?? "").trim();
     case "requirement":
       return requirementLine(c);
+    case "light":
+      return lightLine(c);
+    case "fightingStyle": {
+      if ( c.mode === "gm" ) return names[c.styleUuid] ? `You gain the ${names[c.styleUuid]} Fighting Style` : "";
+      const pool = (c.poolUuids ?? []).map(u => names[u]).filter(Boolean);
+      return `You gain a Fighting Style of your choice${pool.length ? ` (${listText(pool)})` : ""}`;
+    }
     case "conditional": {
       if ( c.effect === "statusEffect" ) {
         if ( !c.status ) return "";
@@ -192,7 +200,7 @@ export function propertyLines(flags, tier, { spellNames={} }={}) {
   }
   for ( const c of flags?.components ?? [] ) {
     if ( (Number(c.tier) || 1) > tier ) continue;
-    const line = componentLine(c, { spellName: spellNames[c.spellUuid] });
+    const line = componentLine(c, { spellName: spellNames[c.spellUuid], names: spellNames });
     if ( line ) lines.push(line);
   }
   return lines;
@@ -223,8 +231,10 @@ export async function refreshItemDescription(item) {
   const tier = Number(flags.currentTier ?? 1) || 1;
   const spellNames = {};
   for ( const c of flags.components ?? [] ) {
-    if ( c.type !== "spell" || !c.spellUuid ) continue;
-    try { spellNames[c.spellUuid] = (await fromUuid(c.spellUuid))?.name ?? ""; } catch { /* missing spell */ }
+    const uuids = c.type === "spell" ? [c.spellUuid] : c.type === "fightingStyle" ? [c.styleUuid, ...(c.poolUuids ?? [])] : [];
+    for ( const u of uuids.filter(Boolean) ) {
+      try { spellNames[u] = (await fromUuid(u))?.name ?? ""; } catch { /* missing document */ }
+    }
   }
   const tiers = flags.tiers ?? [];
   const tiered = tiers.length > 1 && (flags.components ?? []).some(c => (Number(c.tier) || 1) > 1);

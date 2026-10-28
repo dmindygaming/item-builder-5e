@@ -9,6 +9,8 @@ import { enhanceSearchableSelects } from "./combo.mjs";
 import { refreshItemDescription, ruleSentence, selfSide, withoutProperties } from "./describe.mjs";
 import { ItemBuilderHelp, registerHelpMenu } from "./help.mjs";
 import { registerTokenSizeHooks } from "./tokensize.mjs";
+import { DEFAULT_LIGHT, LIGHT_ACTIVATIONS, lightLine, registerLightHooks, syncLights } from "./light.mjs";
+import { applyFightingStyleAdvancement, registerFightingStyleHooks, syncFightingStyles } from "./fstyle.mjs";
 import { CLASS_CHOICES, REQUIREMENT_KINDS, REQUIREMENT_PENALTIES, registerRequirementHooks, requirementLine, syncRequirementEffects } from "./requirements.mjs";
 import { REACTION_EFFECTS, REACTION_TRIGGERS, reactionSummary, syncReactions } from "./reactions.mjs";
 import {
@@ -17,7 +19,9 @@ import {
   itemHasOwnUse, ruleFromComponent, sizeAfter, ruleHandling, syncRuleEffects
 } from "./rules.mjs";
 
-const MODULE_VERSION = "1.0.7";
+const MODULE_VERSION = "1.0.8";
+/** Returns every Fighting Style feat (cached), set up at init. */
+let fightingStyles = async () => [];
 const { ApplicationV2, DialogV2 } = foundry.applications.api;
 
 const esc = v => foundry.utils.escapeHTML(String(v ?? ""));
@@ -165,7 +169,7 @@ class ItemBuilder5e extends ApplicationV2 {
   constructor(options={}) {
     super(options);
     this.activeTab = "basics";
-    this.catalog = { spells:[], weapons:[], armor:[], shields:[], focuses:[], equipment:[] };
+    this.catalog = { spells:[], weapons:[], armor:[], shields:[], focuses:[], equipment:[], fightingStyles:[] };
     this.catalogLoaded = false;
     this.editItem = options.editItem ?? null;
     this.builderData = {
@@ -456,6 +460,7 @@ class ItemBuilder5e extends ApplicationV2 {
     this.catalog.shields = finish(buckets.shields);
     this.catalog.focuses = finish(buckets.focuses);
     this.catalog.equipment = finish(buckets.equipment);
+    try { this.catalog.fightingStyles = await fightingStyles(); } catch { this.catalog.fightingStyles = []; }
 
     this.catalogLoaded = true;
   }
@@ -550,7 +555,7 @@ class ItemBuilder5e extends ApplicationV2 {
       this.render({force:true});
     }));
     el.querySelectorAll('select[name$=".rollTarget"],select[name$=".appliesTo"]').forEach(sel=>sel.addEventListener("change",()=>{this._capture();this.render({force:true});}));
-    el.querySelectorAll('select[name$=".reactionEffect"],select[name$=".trigger"],select[name$=".usesMode"],select[name$=".sizeMode"],select[name$=".requireKind"],select[name$=".penalty"]').forEach(sel=>sel.addEventListener("change",()=>{this._capture();this.render({force:true});}));
+    el.querySelectorAll('select[name$=".reactionEffect"],select[name$=".trigger"],select[name$=".usesMode"],select[name$=".sizeMode"],select[name$=".requireKind"],select[name$=".penalty"],select[name$=".mode"]').forEach(sel=>sel.addEventListener("change",()=>{this._capture();this.render({force:true});}));
     el.querySelectorAll('select[name$=".selectionMode"]').forEach(sel=>sel.addEventListener("change",()=>{this._capture();this.render({force:true});}));
 
     el.querySelectorAll("[data-add-component]").forEach(btn=>btn.addEventListener("click",e=>{
@@ -633,6 +638,15 @@ class ItemBuilder5e extends ApplicationV2 {
         if(abilityKeys.some(k=>checked(`c.${i}.allowedAbility.${k}`)!==undefined))c.allowedAbilities=abilityKeys.filter(k=>checked(`c.${i}.allowedAbility.${k}`));
       }
       if(c.type==="reference")c.text=v(`c.${i}.text`)??c.text;
+      if(c.type==="light"){
+        for(const k of ["bright","dim","color","animation","activation"])c[k]=v(`c.${i}.${k}`)??c[k];
+        const so=checked(`c.${i}.startOn`); if(so!==undefined)c.startOn=so;
+      }
+      if(c.type==="fightingStyle"){
+        c.mode=v(`c.${i}.mode`)??c.mode; c.styleUuid=v(`c.${i}.styleUuid`)??c.styleUuid;
+        const all=this.catalog.fightingStyles??[];
+        if(all.some(st=>checked(`c.${i}.pool.${st.uuid}`)!==undefined))c.poolUuids=all.filter(st=>checked(`c.${i}.pool.${st.uuid}`)).map(st=>st.uuid);
+      }
       if(c.type==="requirement"){
         for(const k of ["requireKind","ability","minimum","penalty","penaltyAbility","formula","damageType","text"])c[k]=v(`c.${i}.${k}`)??c[k];
         const b2=checked(`c.${i}.blocks`); if(b2!==undefined)c.blocks=b2;
@@ -833,6 +847,8 @@ class ItemBuilder5e extends ApplicationV2 {
     if(type==="ability")Object.assign(c,{name:"Ability Score",ability:"str",mode:"add",value:"2"});
     if(type==="halfAsi")Object.assign(c,{name:"2024 Half-ASI",selectionMode:"choice",ability:"str",allowedAbilities:Object.keys(cfg("abilities",{})),selectedAbility:""});
     if(type==="reference")Object.assign(c,{name:"Special Rule",text:""});
+    if(type==="light")Object.assign(c,{name:"Light",...DEFAULT_LIGHT});
+    if(type==="fightingStyle")Object.assign(c,{name:"Fighting Style",mode:"player",styleUuid:"",poolUuids:[]});
     if(type==="requirement")Object.assign(c,{name:"Requirement",requireKind:"class",classes:[],ability:"str",minimum:"15",penalty:"blockAttune",penaltyAbility:"",formula:"",damageType:"psychic",blocks:false,text:""});
     if(type==="reaction")Object.assign(c,{name:"Reaction",trigger:"hit",triggerText:"",reactionEffect:"acBonus",formula:"2",damageType:"any",saveAbility:"dex",saveDC:"13",onSave:"half",usesMode:"unlimited",usesCount:"1",usesAbility:"cha",recovery:"lr",text:""});
     if(type==="spell")Object.assign(c,{name:"Granted Spell",spellUuid:"",displayInSpellbook:true,castingAbility:"",level:"",usesMode:"unlimited",usesCount:"1",usesAbility:"cha",recovery:"lr"});
@@ -846,10 +862,10 @@ class ItemBuilder5e extends ApplicationV2 {
     return `<div class="section-head"><div><h2>Components</h2><p>Add mechanics without touching UUIDs, data paths, or Active Effect keys.</p></div></div>
       <div class="ib90-add">
         <div class="ib90-group"><h4>Character Traits</h4><div class="ib90-buttons">
-          ${btn("movement","fa-person-running","Movement")}${btn("sense","fa-eye","Senses")}${btn("ability","fa-dumbbell","Ability Score")}${btn("skill","fa-graduation-cap","Skill")}${this.builderData.category==="feat"?btn("halfAsi","fa-arrow-up-1-9","2024 Half-ASI"):""}
+          ${btn("movement","fa-person-running","Movement")}${btn("sense","fa-eye","Senses")}${btn("ability","fa-dumbbell","Ability Score")}${btn("skill","fa-graduation-cap","Skill")}${btn("fightingStyle","fa-hand-fist","Fighting Style")}${this.builderData.category==="feat"?btn("halfAsi","fa-arrow-up-1-9","2024 Half-ASI"):""}
         </div></div>
         <div class="ib90-group"><h4>Actions</h4><div class="ib90-buttons">
-          ${btn("spell","fa-wand-sparkles","Spell")}${btn("reaction","fa-bolt-lightning","Reaction")}${btn("reference","fa-align-left","Rules Text")}
+          ${btn("spell","fa-wand-sparkles","Spell")}${btn("reaction","fa-bolt-lightning","Reaction")}${btn("light","fa-lightbulb","Light")}${btn("reference","fa-align-left","Rules Text")}
         </div></div>
         <div class="ib90-group"><h4>Restrictions</h4><div class="ib90-buttons">
           ${btn("requirement","fa-user-lock","Use Requirement")}
@@ -872,6 +888,34 @@ class ItemBuilder5e extends ApplicationV2 {
     if(c.type==="halfAsi"){
       const allowed=new Set(c.allowedAbilities??Object.keys(cfg("abilities",{})));
       body=`<div class="grid2"><label>Who Chooses?<select name="c.${i}.selectionMode"><option value="choice" ${c.selectionMode==="choice"?"selected":""}>Player Chooses</option><option value="fixed" ${c.selectionMode==="fixed"?"selected":""}>GM Sets Ability</option></select></label>${c.selectionMode==="fixed"?`<label>Ability<select name="c.${i}.ability">${abilityOptions(c.ability)}</select></label>`:`<fieldset class="ib324-abilities"><legend>Allowed Player Choices</legend>${Object.entries(cfg("abilities",{})).map(([key,value])=>`<label><input type="checkbox" name="c.${i}.allowedAbility.${key}" ${allowed.has(key)?"checked":""}> ${esc(loc(value,key))}</label>`).join("")}</fieldset>`}<label>Increase<input value="+1 (maximum 20)" disabled></label></div>${halfAsiIsNative(c,this._nativeItemType())?`<div class="ib60-handling native"><i class="fa-solid fa-layer-group"></i><div><strong>Built into the feat</strong> — written as D&D5e Ability Score Improvement advancement, so D&D5e asks for (or applies) the +1 when the feat is dropped on a character. Works even with Item Builder disabled.</div></div>`:`<div class="ib60-handling runtime"><i class="fa-solid fa-bolt"></i><div><strong>Applied by Item Builder</strong> — D&D5e advancement cannot wait for a later tier, so this +1 is an Active Effect; the player is prompted when the tier unlocks or the feat is added.</div></div>`}`;
+    }
+    if(c.type==="light"){
+      const anims={"":"None",...Object.fromEntries(Object.entries(CONFIG.Canvas?.lightAnimations??{}).map(([k,a])=>[k,loc(a?.label,k)]))};
+      body=`<div class="grid2">
+        <label>Bright Light (ft. radius)<input type="number" min="0" step="5" name="c.${i}.bright" value="${esc(c.bright)}"></label>
+        <label>Dim Light Out To (ft. radius) ${this._tip("Total radius of the light, including the bright part. A torch is 20 bright, 40 dim.")}<input type="number" min="0" step="5" name="c.${i}.dim" value="${esc(c.dim)}"></label>
+        <label>Color<input type="color" name="c.${i}.color" value="${esc(c.color||"#ffb347")}"></label>
+        <label>Animation<select name="c.${i}.animation">${selectOptions(anims,c.animation??"",false)}</select></label>
+        <label>Turning It On or Off Takes<select name="c.${i}.activation">${selectOptions(LIGHT_ACTIVATIONS,c.activation||"action",false)}</select></label>
+        <label class="check"><input type="checkbox" name="c.${i}.startOn" ${c.startOn?"checked":""}> Starts lit</label>
+      </div>
+      <div class="ib60-handling runtime"><i class="fa-solid fa-bolt"></i><div><strong>Applied by Item Builder</strong> — adds a “${esc(c.name||"Light")}” activity to the item. Using it turns the light on or off; while lit (and equipped, if the item can be), the owner's tokens shed this light, and their own light comes back when it goes out.</div></div>
+      <p class="ib80-summary"><i class="fa-solid fa-quote-left"></i> ${esc(lightLine(c))}.</p>`;
+    }
+    if(c.type==="fightingStyle"){
+      const all=this.catalog.fightingStyles??[];
+      const mode=c.mode||"player";
+      const native=this._nativeItemType()==="feat"&&(Number(c.tier)||1)<=1;
+      const choices=Object.fromEntries(all.map(st=>[st.uuid,st.name]));
+      body=`<div class="grid2">
+        <label>Who Chooses<select name="c.${i}.mode">${selectOptions({gm:"GM picks the style",player:"Player chooses",},mode,false)}</select></label>
+        ${mode==="gm"
+          ?`<label>Fighting Style<select name="c.${i}.styleUuid" data-searchable="Search fighting styles…"><option value="">Choose a style…</option>${selectOptions(choices,c.styleUuid,false)}</select></label>`
+          :`<fieldset class="ib324-abilities"><legend>Styles they can pick (leave all unticked for every style)</legend>${all.length?all.map(st=>`<label><input type="checkbox" name="c.${i}.pool.${esc(st.uuid)}" ${(c.poolUuids??[]).includes(st.uuid)?"checked":""}> ${esc(st.name)}</label>`).join(""):"<p>No Fighting Style feats were found in your compendiums.</p>"}</fieldset>`}
+      </div>
+      <div class="ib60-handling ${native?"native":"runtime"}"><i class="fa-solid ${native?"fa-layer-group":"fa-bolt"}"></i><div><strong>${native?"Built into the feat":"Applied by Item Builder"}</strong> — ${native
+        ?(mode==="gm"?"written as D&D5e advancement: the style is added when the feat is dropped on a character.":"written as D&D5e advancement: D&D5e asks the player to pick a style when the feat is dropped on a character.")
+        :(mode==="gm"?"the style is added to the character when they get the item (or reach this tier), and removed with it.":"the player is asked to choose when they get the item (or reach this tier); the style is removed with the item.")}</div></div>`;
     }
     if(c.type==="requirement"){
       const kind=c.requireKind||"class", pen=c.penalty||"blockAttune";
@@ -1036,6 +1080,8 @@ class ItemBuilder5e extends ApplicationV2 {
     if(c.type==="spell"){const s=this.catalog.spells.find(x=>x.uuid===c.spellUuid)??resolveUuidSync(c.spellUuid);return `${tier}: grants ${esc(s?.name??"no spell selected")}.`}
     if(c.type==="reaction")return `${tier}: ${esc(reactionSummary(c,k=>loc(cfg("abilities",{})[k],k)))}`;
     if(c.type==="requirement")return `${tier}: ${esc(requirementLine(c))}.`;
+    if(c.type==="light")return `${tier}: ${esc(lightLine(c))}.`;
+    if(c.type==="fightingStyle"){const all=this.catalog.fightingStyles??[];const nm=u=>all.find(x=>x.uuid===u)?.name??"a Fighting Style";return `${tier}: ${c.mode==="gm"?`gains ${esc(nm(c.styleUuid))}`:`player chooses a Fighting Style${c.poolUuids?.length?` (${esc(c.poolUuids.map(nm).join(", "))})`:""}`}.`;}
     if(c.type==="skill"){const sk=cfg("skills",{})[c.skill];const training=String(c.proficiency)==="2"?"Expertise":"Proficiency";const abil=c.ability?` using ${loc(cfg("abilities",{})[c.ability],c.ability)}`:"";return `${tier}: ${training} in ${esc(loc(sk,c.skill))}${esc(abil)}.`}
     if(c.type==="halfAsi")return `${tier}: +1 ${c.selectionMode==="fixed"?esc(loc(cfg("abilities",{})[c.ability],c.ability)):c.selectedAbility?esc(loc(cfg("abilities",{})[c.selectedAbility],c.selectedAbility)):"ability score chosen by the player"} (maximum 20).`;
     if(c.type==="reference")return `${tier}: ${esc(c.name)} — ${esc(c.text||"No rules text entered")}`;
@@ -1204,8 +1250,10 @@ class ItemBuilder5e extends ApplicationV2 {
     data.flags ??= {};
     let nativeAsi={ids:{},removed:[]};
     if(data.type==="feat")nativeAsi=applyNativeAsi(data,b.components,Object.keys(cfg("abilities",{})),()=>foundry.utils.randomID());
+    let nativeStyles={ids:{},removed:[]};
+    if(data.type==="feat")nativeStyles=applyFightingStyleAdvancement(data,b.components,this.catalog.fightingStyles??[],()=>foundry.utils.randomID());
     data.flags[MODULE_ID]={
-      schemaVersion:13,spellGrants:data.flags?.[MODULE_ID]?.spellGrants??"",nativeAsiIds:nativeAsi.ids,nativePatches:data.flags?.[MODULE_ID]?.nativePatches??"",reactions:data.flags?.[MODULE_ID]?.reactions??"",progressionNotes:b.progressionNotes||"",baseRarity:b.rarity||"",currentTier:b.currentTier,tiers:foundry.utils.deepClone(b.tiers),
+      schemaVersion:13,spellGrants:data.flags?.[MODULE_ID]?.spellGrants??"",nativeAsiIds:nativeAsi.ids,nativeStyleIds:nativeStyles.ids,nativePatches:data.flags?.[MODULE_ID]?.nativePatches??"",reactions:data.flags?.[MODULE_ID]?.reactions??"",progressionNotes:b.progressionNotes||"",baseRarity:b.rarity||"",currentTier:b.currentTier,tiers:foundry.utils.deepClone(b.tiers),
       components:foundry.utils.deepClone(b.components),
       rules:b.components.filter(c=>c.type==="conditional").map(c=>this._rule(c)),
       category:b.category,baseUuid:b.baseUuid,enhancementBonus:Number(b.enhancementBonus)||0,
@@ -1229,10 +1277,10 @@ class ItemBuilder5e extends ApplicationV2 {
         delete update.effects;
 
         // Foundry merges object updates, so advancement Item Builder no longer wants is deleted explicitly.
-        for(const id of nativeAsi.removed)delete update.system?.advancement?.[id];
+        for(const id of [...nativeAsi.removed,...nativeStyles.removed])delete update.system?.advancement?.[id];
         await this.editItem.update(update);
         item=this.editItem;
-        for(const id of nativeAsi.removed){
+        for(const id of [...nativeAsi.removed,...nativeStyles.removed]){
           try{ await item.deleteAdvancement?.(id); }
           catch(err){ console.warn(`${MODULE_ID} | could not remove old Half-ASI advancement`,err); }
         }
@@ -1250,6 +1298,8 @@ class ItemBuilder5e extends ApplicationV2 {
         await syncRuleEffects(item);
         await syncReactions(item);
         await syncRequirementEffects(item);
+        await syncLights(item);
+        await syncFightingStyles(item,this.catalog.fightingStyles??[]);
         await refreshItemDescription(item);
         ui.notifications.info(`Item Builder: Updated "${item.name}".`);
       }else{
@@ -1258,6 +1308,8 @@ class ItemBuilder5e extends ApplicationV2 {
         await syncRuleEffects(item);
         await syncReactions(item);
         await syncRequirementEffects(item);
+        await syncLights(item);
+        await syncFightingStyles(item,this.catalog.fightingStyles??[]);
         await refreshItemDescription(item);
         ui.notifications.info(`Item Builder: Created "${item.name}".`);
       }
@@ -1349,6 +1401,8 @@ async function setTier(item,newTier){
   await syncRuleEffects(item);
   await syncReactions(item);
   await syncRequirementEffects(item);
+  await syncLights(item);
+  await syncFightingStyles(item,await fightingStyles());
   await refreshItemDescription(item);
   ui.notifications.info(`${item.name}: now ${tiers[newTier-1]?.name??`Tier ${newTier}`}.`);
   item.sheet?.render({force:true});
@@ -1368,6 +1422,8 @@ Hooks.once("init",()=>{
   registerRuleHooks();
   registerTokenSizeHooks();
   registerRequirementHooks();
+  registerLightHooks();
+  fightingStyles = registerFightingStyleHooks();
   registerHelpMenu();
   // Retained as a hidden legacy setting so existing worlds do not lose stored configuration.
   // Extra damage now travels through D&D5e's native damage card and application controls.

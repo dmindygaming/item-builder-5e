@@ -53,8 +53,8 @@ export const HELP_SECTIONS = [
       ${where("Builder → <b>Components</b> tab → buttons at the top")}
       <p>Components are the item's mechanics. The add buttons are grouped into three rows:</p>
       <ul>
-        <li><b>Character Traits</b> — <a data-jump="movement">Movement</a>, <a data-jump="senses">Senses</a>, <a data-jump="ability">Ability Score</a>, <a data-jump="skill">Skill</a>, and <a data-jump="halfasi">2024 Half-ASI</a> (feats only).</li>
-        <li><b>Actions</b> — <a data-jump="spell">Spell</a>, <a data-jump="reaction">Reaction</a>, <a data-jump="rulestext">Rules Text</a>.</li>
+        <li><b>Character Traits</b> — <a data-jump="movement">Movement</a>, <a data-jump="senses">Senses</a>, <a data-jump="ability">Ability Score</a>, <a data-jump="skill">Skill</a>, <a data-jump="fightingstyle">Fighting Style</a>, and <a data-jump="halfasi">2024 Half-ASI</a> (feats only).</li>
+        <li><b>Actions</b> — <a data-jump="spell">Spell</a>, <a data-jump="reaction">Reaction</a>, <a data-jump="light">Light</a>, <a data-jump="rulestext">Rules Text</a>.</li>
         <li><b>Restrictions</b> — <a data-jump="requirement">Use Requirement</a>.</li>
         <li><b>Rule Effects</b> — <a data-jump="offensive">Offensive</a>, <a data-jump="defensive">Defensive</a>, <a data-jump="healing">Healing / Recovery</a>, <a data-jump="utility">Utility / Control</a>.</li>
       </ul>
@@ -81,6 +81,12 @@ export const HELP_SECTIONS = [
       <p>Proficiency or Expertise in a skill, optionally using a different ability.</p>`
   },
   {
+    id: "fightingstyle", title: "Fighting Style", icon: "fa-hand-fist", parent: "components",
+    body: `${where("Components → Character Traits → <b>Fighting Style</b>")}
+      <p>Grants a Fighting Style feat. <b>Who Chooses</b>: the GM picks one style, or the player chooses — from the styles you tick, or from every Fighting Style in your compendiums if you tick none.</p>
+      <p>On a tier-1 feat it is written as D&amp;D5e advancement, so D&amp;D5e adds the style (or asks the player) when the feat is dropped on a character. On other items, or at higher tiers, Item Builder adds it when the character gets the item or reaches the tier, and removes it with the item.</p>`
+  },
+  {
     id: "halfasi", title: "2024 Half-ASI", icon: "fa-arrow-up-1-9", parent: "components",
     body: `${where("Basics → Item Category: Feat → Components → Character Traits → <b>2024 Half-ASI</b>")}
       <p>+1 to an ability (maximum 20). <b>Who Chooses?</b> lets the player pick from the abilities you allow, or you set it.</p>
@@ -101,6 +107,12 @@ export const HELP_SECTIONS = [
         <dt>Uses / Recovery</dt><dd>See <a data-jump="uses">Uses</a>.</dd>
       </dl>
       <p class="ibh-note">D&amp;D5e does not prompt for reactions; the player uses it from their sheet when it's triggered.</p>`
+  },
+  {
+    id: "light", title: "Light", icon: "fa-lightbulb", parent: "components",
+    body: `${where("Components → Actions → <b>Light</b>")}
+      <p>Makes the item a light source: bright and dim radius, color, animation, and whether turning it on or off takes an action, a bonus action or no action. It can start lit.</p>
+      <p>The item gets an activity with the component's name. Using it turns the light on or off. While it is lit (and equipped, if the item can be), the owner's tokens shed the light; their own light comes back when it goes out or the item is unequipped. Needs Item Builder enabled.</p>`
   },
   {
     id: "rulestext", title: "Rules Text", icon: "fa-align-left", parent: "components",
