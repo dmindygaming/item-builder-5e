@@ -309,3 +309,20 @@
 .chat-message .ib-properties, .chat-popout .ib-properties { display: none; }
 .item-builder-5e .ib33-root .ib91-tier .ib93-rarity { display: flex !important; align-items: center; gap: .5rem; margin: 0 0 0 2.7rem !important; font-size: .9em; }
 .item-builder-5e .ib33-root .ib91-tier .ib93-rarity select { width: auto !important; margin: 0 !important; }
+
+/* v1.0.9 Describe It */
+.item-builder-5e .ib33-root .ib94-describe { margin: .2rem 0 .8rem; padding: .55rem .75rem; border: 1px solid #a9803c66; border-radius: 8px; background: #a9803c12; }
+.item-builder-5e .ib33-root .ib94-describe > summary { cursor: pointer; font-weight: 700; text-transform: none; }
+.item-builder-5e .ib33-root .ib94-describe > summary * { text-transform: none; }
+.item-builder-5e .ib33-root .ib94-describe > summary .muted { font-weight: 400; opacity: .7; }
+.item-builder-5e .ib33-root .ib94-describe textarea { width: 100%; min-height: 6.5rem; }
+.item-builder-5e .ib33-root .ib94-actions { display: flex; gap: .4rem; margin-top: .4rem; }
+.item-builder-5e .ib33-root .ib94-actions button { width: auto; flex: 0 0 auto; padding: .3rem .8rem; }
+.item-builder-5e .ib33-root .ib94-results { margin-top: .6rem; padding-top: .5rem; border-top: 1px solid #7773; }
+.item-builder-5e .ib33-root .ib94-results h4 { margin: .3rem 0; font-size: .85rem; border: 0; }
+.item-builder-5e .ib33-root .ib94-results ul { list-style: none; margin: 0 0 .4rem; padding: 0; display: grid; gap: .2rem; }
+.item-builder-5e .ib33-root .ib94-results li label { display: flex; align-items: center; gap: .4rem; margin: 0; }
+.item-builder-5e .ib33-root .ib94-results li input { flex: 0 0 auto; margin: 0; }
+.item-builder-5e .ib33-root .ib94-kind, .item-builder-5e .ib33-root .ib94-tier { font-size: .72rem; padding: 0 .35rem; border-radius: 4px; border: 1px solid #7776; opacity: .85; white-space: nowrap; }
+.item-builder-5e .ib33-root .ib94-tier { border-color: #a9803c99; background: #a9803c22; }
+.item-builder-5e .ib33-root .ib94-left li { font-style: italic; opacity: .8; padding-left: .6rem; border-left: 2px solid #7775; }
