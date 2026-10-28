@@ -318,6 +318,9 @@ export function parseDescription(text, ctx={}) {
       category = cat;
       add(`Base item: ${base.e.name}`, null, { category: cat, baseUuid: base.e.uuid, ...(cat === "armor" ? { armorType: base.kind === "shield" ? "shield" : (base.e.armorType || "") } : {}) });
     }
+    // "Battle axe +1." — a bare +N right after (or before) the base item.
+    const bare = !enh && base && !found.some(f => f.basics?.enhancementBonus) ? s.match(/\+\s*([1-3])\s*(?=[.,;!)]|$)/) : null;
+    if ( bare ) add(`+${bare[1]} enhancement bonus`, null, { enhancementBonus: bare[1] });
     if ( enh && (base || /^(?:magic(?:al)? )?(?:weapon|armor|armour|shield)\b/.test(enh[2].trim())) ) {
       if ( !base && !baseKnown() ) {
         const kind = enh[2].trim().replace(/^magic(?:al)? /, "");
