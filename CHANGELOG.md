@@ -2,6 +2,14 @@
 
 All notable changes to Item Builder 5e.
 
+## v1.0.9 Describe It
+
+- **Describe It** (Components tab, above the add buttons): write the item in plain English and click **Read Description**. Item Builder suggests the matching components and basic settings: name, base item, rarity, attunement, enhancement bonus, senses, speeds, ability scores, skills, Fighting Styles, spells with their uses or charges, light, reactions, resistances and immunities, AC/save/attack bonuses, extra damage (against a creature type), advantage and disadvantage, reach, cover, size, healing, and use requirements. Lines starting with a tier name ("Awakened:") put what follows at that tier.
+- You review the list and untick anything you don't want before **Add Selected**; the components are then normal cards you can adjust. Sentences it can't read are listed, and can go into the item's Description.
+- Runs offline inside the module; nothing is sent anywhere.
+- Items with condition immunity (from Describe It or Utility → Apply Active Effect) list "You can't be frightened" etc. in their Item Properties.
+- Fighting Style lists merge duplicates such as "Fighting Style: Archery" and "Archery".
+
 ## v1.0.8 Light sources, Fighting Styles
 
 - **Light** (Components → Actions): makes the item a light source with bright and dim radius, color and animation. The item gets an activity that turns the light on or off (an action, a bonus action, or no action), and it can start lit. While lit and equipped, the owner's tokens shed the light; their normal light returns when it goes out or the item is unequipped.
