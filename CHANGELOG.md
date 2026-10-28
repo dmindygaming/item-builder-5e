@@ -2,6 +2,14 @@
 
 All notable changes to Item Builder 5e.
 
+## v1.1.3 Describe It finds the base item anywhere
+
+- The base weapon, armor or shield is found wherever the description first names it, not only at the very start: "A longsword that deals an extra 1d6 fire damage", "Base weapon: longsword", "Weapon: Longsword", "The Frostbrand is a greatsword".
+- Spelling variants match: "long sword", "battle axe", "great axe", "war pick".
+- "Longsword." on its own line is read as the base item, not the item's name.
+- Comparisons such as "light as a dagger" don't count as the base item.
+- A bare bonus after the base item ("Battle axe +1.", "Light crossbow +1") sets the enhancement bonus.
+
 ## v1.1.2 Backgrounds, Feat component, Initiative, Character Options compendium
 
 - **Backgrounds** (Basics → Item Category: Background): build a 2024 background the way D&D5e's own are made: three ability scores (+2/+1 or +1/+1/+1, max 20), two skill proficiencies, a tool proficiency (a set tool or the player's pick from a group), an Origin feat, languages (Common + two of choice) and starting gold. D&D5e runs it all when the background is dropped on a character. Custom Origin feats now work the standard way, through a background.
