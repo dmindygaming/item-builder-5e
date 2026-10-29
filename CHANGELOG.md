@@ -2,6 +2,20 @@
 
 All notable changes to Item Builder 5e.
 
+## v1.1.6 Describe It, closer to 100%
+
+Describe It was scored again, this time feature by feature against an answer key taken from D&D5e's own SRD item data (rarity, attunement, base item, enhancement, spells, resistances, immunities, senses, movement, ability scores and bonuses), and against 100 new GM-style write-ups that were not used to tune it. Of the rules the SRD text states, it now finds 97% (up from about 80%); on the new write-ups it got 91 of 100 fully right before any fixes for them (the last 40, written after the other fixes, 38 of 40), and all 100 after.
+
+- **Movement**: "a climb speed and a swim speed equal to your speed" (new **Equal to Walking Speed** option on the Movement card, written the way D&D5e's own Gloves of Swimming and Climbing are) and "your speed becomes 30 feet unless your speed is higher" (new **At Least** option). It no longer reads "the sword flies up to 30 feet" as your flying speed.
+- **Lists of bonuses**: "+2 bonus to Armor Class, saving throws, and spell attack rolls", "your spell save DC and spell attack bonus each increase by 2", "+1 bonus to ability checks and saving throws" (new ability check bonus).
+- **Senses**: "Darkvision and Truesight, both with a range of 120 feet".
+- **Attunement** from wording such as "if your attunement to the stone ends", "attunement required", "while attuned to it".
+- **Conditional AC**: "+2 to AC against ranged attack rolls" becomes an AC rule for ranged attacks instead of the armor's enhancement bonus.
+- **Names**: "Cloak of the Mountain: resistance to cold…" and "Origin feat: Quick Hands." name the item; "Rapier of Wounding. +1." and "Breastplate, +2." set the bonus; "half plate" finds Half Plate Armor.
+- **Fewer wrong suggestions**: an object's or summoned creature's statistics ("the rope has AC 20, HP 20, and immunity to poison"; "the spirits have immunity to the charmed condition"), "can speak Common" as a rarity, "Dexterity (Sleight of Hand) checks" as an ability score, "damage from a +3 weapon" as an enhancement, "except hide armor" as the base item, "each casting of Wish" as a spell, and truesight seen through a scrying sensor.
+- **Base weapons**: monster attacks such as Ram, Thunderbolt and Chain no longer appear in the base weapon list or get picked from a description.
+- Also reads "Immunity to the Poisoned condition and Poison damage" (both), "you ignore difficult terrain" no longer hides a resistance in the same sentence, and "Background: … Skills: … Tool: …" lines.
+
 ## v1.1.5 Describe It, rebuilt
 
 Describe It was measured against every magic item in D&D5e's 2024 SRD and against GM-style write-ups, then reworked. On casual descriptions it went from about 1 in 5 fully right to nearly all, and it now picks the right item type for about 9 in 10 SRD items (from under 2 in 10).
