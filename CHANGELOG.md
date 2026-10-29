@@ -2,6 +2,17 @@
 
 All notable changes to Item Builder 5e.
 
+## v1.1.5 Describe It, rebuilt
+
+Describe It was measured against every magic item in D&D5e's 2024 SRD and against GM-style write-ups, then reworked. On casual descriptions it went from about 1 in 5 fully right to nearly all, and it now picks the right item type for about 9 in 10 SRD items (from under 2 in 10).
+
+- **Item type from the item's noun**: rings, amulets, neckguards, cloaks, boots, belts, helms, wands, staffs and the like become Other Equipment; potions, oils, scrolls and arrows become Consumables. Items that name no weapon or armor no longer stay set to Weapon.
+- **Advantage against conditions and creatures**: "advantage on Vampire charm effects", "advantage on saves vs fear from undead", "advantage on saving throws against being charmed". Also several advantages in one sentence ("advantage on initiative and Perception checks"), and it no longer misreads "creatures have disadvantage on attacks against you" or "no disadvantage".
+- **Save advantage or bonus against a condition** (Defensive Effect → Applies When → Only Saves Against a Condition): new in the rules engine. The condition is read from the effects of the spell or ability that calls for the save (or its description), and can be limited to a creature type or subtype.
+- **New bonuses**: spell attack and spell save DC ("+2 to spell attack rolls and spell save DC"), skill checks ("+2 Perception and Insight", "Stealth +3"), ability checks ("+2 to Charisma checks"), weapon damage ("+2 to damage rolls with ranged weapons").
+- **Rules it can't automate are kept as Rules Text** (even part of a sentence), so they still appear in the item's description for players; only flavor goes to the Description.
+- Also: "casts", "Scroll of Fireball", short spell names (Web), charges that regain at dawn, "emits green dim light", "bright light 20 ft, dim 40", "fly 40 ft", "Intelligence 19", "Constitution +2", "Dex save", "vs", "adv", a base item named in the title ("Sentinel Shield"), and only one value per basic setting (no second base item or rarity from a table).
+
 ## v1.1.4 Extra damage without a damage type
 
 - Describe It reads extra damage that names no type ("Does an additional 3d6 damage against humanoids", "adds 1d4 damage") as damage of the weapon's own type, taken from the base weapon (also when the base weapon is set in the same description). With no base weapon it uses Force and says so, so you can change it on the card.
