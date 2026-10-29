@@ -89,13 +89,15 @@ export const HELP_SECTIONS = [
       <p>Start a line with a tier name or number, such as <i>“Awakened:”</i> or <i>“Tier 2 –”</i>, and everything after it begins at that tier. A sentence can also say <i>“at the Exalted tier, …”</i>. Missing tiers are added for you.</p>
       <h4>What it understands</h4>
       <dl>
+        <dt>Item type</dt><dd>Read from the item's noun: <i>ring, amulet, neckguard, cloak, boots, belt, helm, wand, staff…</i> make it Other Equipment; <i>potion, oil, scroll, arrows…</i> make it a Consumable; a weapon or armor named anywhere (<i>longsword, plate armor, shield</i>) becomes the base item.</dd>
         <dt>Basics</dt><dd>A short title line as the name; <i>“Weapon (longsword), rare (requires attunement by a paladin)”</i> or <i>“+1 longsword”</i> for the base item, rarity, attunement and enhancement bonus. For feats: <i>“Origin Feat named Martial Savant”</i> sets the category and feat type, and <i>“Prerequisite: level 4”</i> or <i>“Prerequisite: Strength 13”</i> fills the requirements.</dd>
         <dt>Character traits</dt><dd><i>darkvision out to 60 feet</i>, blindsight, tremorsense, truesight, Devil's Sight; <i>a flying speed of 30 feet</i>, <i>your speed increases by 10 feet</i>; <i>your Strength score is 19</i>, <i>increase your Wisdom by 1</i>; <i>proficiency in Stealth</i>, <i>expertise in Insight</i>; <i>a fighting style of your choice</i>, <i>a player's choice of a Fighting Style</i> or <i>the Dueling fighting style</i>; on feats, <i>increase one ability score of your choice by 1</i> or <i>increase your Strength or Constitution by 1</i> becomes a 2024 Half-ASI.</dd>
         <dt>Actions</dt><dd><i>cast Misty Step once per long rest</i> (also “3 charges … regains all expended charges at dawn”, “a number of times equal to your proficiency bonus”, “at will”); <i>sheds bright light in a 20-foot radius and dim light for an additional 20 feet</i>; reactions such as <i>as a reaction when a creature hits you, you gain a +2 bonus to AC</i>.</dd>
-        <dt>Rule effects</dt><dd>Resistance, immunity or vulnerability to damage types; <i>can't be frightened</i>; +AC, +saving throws, +attack rolls; <i>an extra 1d6 radiant damage</i> (against a creature type, if named); advantage or disadvantage on skills, checks, saves, attacks, initiative or concentration; advantage on saves against spells; increased reach; ignoring cover or resistance; growing or shrinking; extra healing.</dd>
+        <dt>Rule effects</dt><dd>Resistance, immunity or vulnerability to damage types; <i>can't be frightened</i>; +AC, +saving throws, +attack rolls; <i>an extra 1d6 radiant damage</i> (against a creature type, if named); advantage or disadvantage on skills, checks, saves, attacks, initiative or concentration; advantage on saves against a condition, optionally only from some creatures (<i>advantage on Vampire charm effects</i>, <i>advantage on saves vs fear from undead</i>); advantage on saves against spells; spell attack and spell save DC bonuses (<i>+2 to spell attack rolls and spell save DC</i>); skill and ability check bonuses (<i>+2 Perception and Insight</i>, <i>+2 to Charisma checks</i>); weapon damage bonuses; increased reach; ignoring cover or resistance; growing or shrinking; extra healing.</dd>
         <dt>Use requirements</dt><dd><i>requires attunement by a wizard</i>, <i>creatures with a Strength lower than 15 have their speed reduced by 10 feet</i>, <i>a creature that isn't a cleric takes 2d6 psychic damage</i>.</dd>
       </dl>
-      <p>Sentences it can't turn into rules are listed under <b>Not turned into rules</b>, and by default are added to the item's Description. Add any rules among them by hand.</p>`
+      <p>Common shorthand works too: <i>Dex save</i>, <i>vs</i>, <i>adv</i>, <i>1/day</i>, <i>+1 to hit</i>, <i>Reach +5</i>, <i>Battle axe +1</i>.</p>
+      <p>A rule it can't automate (part of a sentence, too) is suggested as <b>Rules text (not automated)</b>, so players still see it in the item's description. Sentences that are only flavor are listed under <b>Not turned into rules</b> and by default go into the item's Description.</p>`
   },
   {
     id: "movement", title: "Movement", icon: "fa-person-running", parent: "components",
@@ -213,7 +215,7 @@ export const HELP_SECTIONS = [
       <ul>
         <li><b>Resistance</b>, <b>Immunity</b>, <b>Vulnerability</b> — to one damage type or any damage.</li>
         <li><b>AC Bonus</b> — against any, melee, ranged or spell attacks.</li>
-        <li><b>Saving Throw Bonus</b>, <b>Saving Throw Advantage</b> — any save, or only saves against spells, or against spells and magical effects.</li>
+        <li><b>Saving Throw Bonus</b>, <b>Saving Throw Advantage</b> — any save, only saves against spells, against spells and magical effects, or <b>against a condition</b> you pick (such as Charmed). Item Builder reads the condition from the effects of the spell or ability that called for the save (or its description). Add a creature type or subtype under Only when… to limit it further, e.g. Vampire.</li>
       </ul>
       <p><b>Applies When</b> picks the triggering event. <b>Attacker's Attack or Ability Named</b> (under Only when…) limits the rule to attacks whose name contains that text, e.g. “Bite”.</p>`
   },

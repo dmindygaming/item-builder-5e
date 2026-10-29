@@ -22,7 +22,7 @@ import {
   itemHasOwnUse, ruleFromComponent, sizeAfter, ruleHandling, syncRuleEffects
 } from "./rules.mjs";
 
-const MODULE_VERSION = "1.1.4";
+const MODULE_VERSION = "1.1.5";
 /** Returns every Fighting Style feat (cached), set up at init. */
 let fightingStyles = async () => [];
 /** Every feat (cached), set up at init. */
@@ -1206,6 +1206,7 @@ class ItemBuilder5e extends ApplicationV2 {
       if(defensive) relevantFields+=`<label>Affected Damage Type ${this._tip("Choose Any Resulting Damage to affect the whole matching attack, or restrict the rule to one normal D&D damage type.")}<select name="c.${i}.damageType"><option value="any" ${c.damageType==="any"?"selected":""}>Any Resulting Damage</option>${standardDamageOptions(c.damageType==="any"?"radiant":c.damageType)}</select></label>`;
       if(OFFENSIVE_DAMAGE_RULES.has(c.effect)) relevantFields+=`<label>Affected Damage Type ${this._tip("Choose Any Resulting Damage or restrict this offensive bypass/vulnerability to one normal D&D damage type.")}<select name="c.${i}.damageType"><option value="any" ${c.damageType==="any"?"selected":""}>Any Resulting Damage</option>${standardDamageOptions(c.damageType==="any"?"radiant":c.damageType)}</select></label>`;
       if(c.ruleCategory==="defensive") relevantFields+=`<label>Applies When ${this._tip("Which incoming event this defensive effect applies to.")}<select name="c.${i}.trigger">${selectOptions(triggerOptions(c.effect),c.trigger||"damage",false)}</select></label>`;
+      if(c.ruleCategory==="defensive"&&c.trigger==="saveAgainstCondition") relevantFields+=`<label>Condition ${this._tip("Applies to saves against something that would give this condition, such as a vampire's charm. Item Builder reads the condition from the spell or ability's effects (or its description).")}<select name="c.${i}.status">${conditionOptions(c.status)}</select></label>`;
       if(["saveBonus","saveAdvantage"].includes(c.effect)) relevantFields+=`<label>Saving Throw Ability<select name="c.${i}.ability"><option value="">Any Save</option>${abilityOptions(c.ability,true).replace('<option value="">—</option>','')}</select></label>`;
       if(["advantage","disadvantage"].includes(c.effect)){
         const rt=c.rollTarget||"attack";

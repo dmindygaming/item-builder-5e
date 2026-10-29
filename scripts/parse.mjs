@@ -69,8 +69,39 @@ function norm(s) {
     .replace(/[’‘]/g, "'").replace(/[“”]/g, "\"").replace(/[–—]/g, "-")
     .replace(/(\d+)\s*-?\s*(?:foot|feet|ft\.?)(?![a-z])/g, "$1 feet")
     .replace(/\bsaves\b/g, "saving throws")
+    .replace(/\bvs\.?(?=\s)/g, "against").replace(/\bw\/(?=\s)/g, "with")
+    .replace(/\bdisadv\b\.?/g, "disadvantage").replace(/\badv\b\.?/g, "advantage")
+    .replace(/\bhp\b/g, "hit points").replace(/\b(?:pb|prof bonus)\b/g, "proficiency bonus")
+    .replace(/\b(str|dex|con|int|wis|cha)\b\.?(?=\s*(?:\(|save|saving|check|mod|modifier|score|\+|\d))/g, (_m, a) => ({ str: "strength", dex: "dexterity", con: "constitution", int: "intelligence", wis: "wisdom", cha: "charisma" })[a])
     .replace(/\s+/g, " ").trim();
 }
+
+/* -------------------------------------------- */
+/*  Vocabulary                                  */
+/* -------------------------------------------- */
+
+/** Nouns that say what kind of item it is. */
+const ITEM_NOUNS = {
+  consumable: "potion|potions|elixir|philter|philtre|draught|tonic|brew|oil|salve|ointment|balm|scroll|dust|powder|ammunition|arrows?|bolts?|bullets?|needles?|bomb|grenade|vial",
+  equipment: "wondrous item|ring|amulet|necklace|neckguard|neckband|choker|gorget|pendant|periapt|medallion|talisman|amulet|brooch|pin|badge|cloak|cape|mantle|robes?|vestments?|boots|slippers|shoes|sandals|belt|girdle|sash|gloves|gauntlets|bracers|bracelet|bangle|armband|helm|helmet|hat|cap|hood|circlet|crown|tiara|headband|diadem|goggles|lenses|spectacles|monocle|eyes of|mask|bag|pouch|sack|backpack|quiver|rope|figurine|statuette|gem|jewel|stone|ioun|orb|crystal|horn|lyre|lute|drum|flute|pipes|harp|instrument|wand|rod|staff|lantern|lamp|candle|coin|token|deck|cube|carpet|broom|mirror|book|tome|manual|censer|chime|bell|compass|key|charm|totem|idol|trinket|earrings?|tattoo|cauldron|bottle|flask|jug|greaves|vambraces|pauldrons|sabatons|wraps|bandolier|scarf|shawl|veil|collar|anklet|locket|scarab|phylactery|effigy|emblem|insignia|signet|loop|feather|shell|skull|tooth|claw|cord|chain(?! mail| shirt)|spurs|saddle|horseshoes|banner|flag|sigil|rune",
+  armor: "armor|armour|breastplate|chain shirt|chainmail|mail|scale mail|hauberk|cuirass|brigandine",
+  weapon: "sword|blade|axe|bow|crossbow|hammer|mace|spear|dagger|knife|club|whip|lance|scythe|sickle|flail|staff of striking|hilt|pommel|haft|crossguard|quillons|arrowhead|weapon"
+};
+/** Words that make a clause a rule rather than flavor. */
+const CLAUSE_RULE = /\b(regain|hit points|breathe|can't|cannot|immune|advantage|disadvantage|reroll|teleport|cast|charges?|once per|per day|you can|lets you|allows you|ignore|maximi[sz]e|critical|instead|equal to)\b/i;
+const CATEGORY_LABELS = { consumable: "Consumable", equipment: "Other Equipment", armor: "Armor", weapon: "Weapon" };
+
+/** Condition words and their common synonyms. */
+const CONDITION_WORDS = [
+  ["charmed", /\bcharm(?:ed|s|ing)?\b/], ["frightened", /\bfright(?:en(?:ed|ing|s)?|ful)\b|\bfear(?:s|ful)?\b|\bscared\b|\bterrif\w*|\bterror\b/],
+  ["poisoned", /\bpoisoned\b|\bpoison\b(?!\s+damage)/], ["paralyzed", /\bparaly[sz]\w*/], ["stunned", /\bstun(?:ned|s)?\b/],
+  ["blinded", /\bblind(?:ed|ness)?\b/], ["deafened", /\bdeaf(?:ened|ness)?\b/], ["petrified", /\bpetrif\w*/],
+  ["restrained", /\brestrain(?:ed|s)?\b/], ["grappled", /\bgrappl(?:ed|e|es|ing)\b/], ["prone", /\bprone\b/],
+  ["incapacitated", /\bincapacitated\b/], ["unconscious", /\bunconscious\b|\bmagical sleep\b|\bput to sleep\b/],
+  ["exhaustion", /\bexhaust\w*/], ["invisible", /\binvisib\w*/]
+];
+/** Creature subtypes Item Builder can match by subtype or name. */
+const SUBTYPE_WORDS = { vampire: "vampire", demon: "demon", devil: "devil", angel: "angel", lycanthrope: "shapechanger", werewolf: "shapechanger", shapechanger: "shapechanger", yugoloth: "yugoloth", titan: "titan", goblinoid: "goblinoid", goblin: "goblinoid", gnoll: "gnoll", kobold: "kobold", orc: "orc", gith: "gith", lich: "lich", hag: "hag", dragon: "" };
 
 /** Lookup tables built from the world's configuration. */
 function tables(ctx) {
@@ -120,6 +151,17 @@ function creaturesIn(phrase, T) {
     return new RegExp(`(?<![a-z])${stem}(?:s|es)?(?![a-z])`).test(phrase);
   }).map(([k]) => k);
 }
+/** "undead" and "fey" stay as they are; "monstrosity" -> "monstrosities"; others add "s". */
+const plural = w => /^(?:undead|fey)$/.test(w) ? w : w.endsWith("y") ? `${w.slice(0, -1)}ies` : w.endsWith("s") ? w : `${w}s`;
+function conditionsIn(phrase, T) {
+  const ids = new Set(T.conditions.map(([k]) => k));
+  return CONDITION_WORDS.filter(([id, re]) => (!ids.size || ids.has(id)) && re.test(phrase)).map(([id]) => id);
+}
+function subtypesIn(phrase) {
+  const out = [];
+  for ( const [w, sub] of Object.entries(SUBTYPE_WORDS) ) if ( sub && new RegExp(`(?<![a-z])${w}s?(?![a-z])`).test(phrase) && !out.includes(sub) ) out.push(sub);
+  return out;
+}
 function classesIn(phrase, T) {
   return T.classes.filter(([k, l]) => new RegExp(`(?<![a-z])${reEsc(l)}s?(?![a-z])`).test(phrase)).map(([k]) => k);
 }
@@ -154,7 +196,6 @@ function usesNote(u) {
   return ` (ability modifier/${per})`;
 }
 
-const ADV_RE = /\b(advantage|disadvantage) on ([^.;]+)/;
 
 /**
  * Parse a description.
@@ -194,6 +235,7 @@ export function parseDescription(text, ctx={}) {
     return best;
   };
 
+  let titleBase = null;
   // "Longsword." on its own is the base item, not the name.
   const isJustBase = t => {
     const b = findBase(norm(t));
@@ -206,12 +248,38 @@ export function parseDescription(text, ctx={}) {
   const words = first.split(/\s+/);
   const minor = /^(?:of|the|a|an|and|or|in|on|to|with)$/i;
   const capitalised = words.filter(w => !minor.test(w)).filter(w => /^[A-Z]/.test(w)).length;
-  if ( list.length > 1 && first && words.length <= 6 && capitalised >= Math.ceil(words.filter(w => !minor.test(w)).length / 2)
+  if ( !ctx._clause && list.length > 1 && first && words.length <= 6 && capitalised >= Math.ceil(words.filter(w => !minor.test(w)).length / 2)
     && !/\d|\b(?:cast|you|your|has|have|is|are|can|named|called|known as)\b|[(),+:]/i.test(first) && !isJustBase(first) ) {
     findings.push({ label: `Name: ${first}`, tier: 1, sentence: list[0].text, basics: { name: first } });
     list.shift();
+    titleBase = findBase(norm(first));
   }
   let pendingUses = null;   // "The cloak has 3 charges..." waiting for the spells that use them.
+
+  // What kind of item is it? The first item noun in the name or opening sentence ("Ring of…",
+  // "A magical neckguard…", "Potion of…"). A base item found later (longsword, plate armor) wins.
+  let inferred = null;
+  if ( !ctx._clause ) {
+    const opening = norm([findings.find(f => f.basics?.name)?.basics.name, list[0]?.text, list[1]?.text].filter(Boolean).join(". "));
+    let best = null;
+    for ( const [cat, words] of Object.entries(ITEM_NOUNS) ) {
+      const hit = opening.match(new RegExp(`(?<![a-z])(?:${words})(?![a-z])`));
+      if ( hit && (!best || hit.index < best.at) ) best = { cat, at: hit.index, word: hit[0] };
+    }
+    const base = findBase(opening);
+    if ( best && /^quarterstaff/.test(opening.slice(best.at)) ) best = null;
+    if ( best && !(base && base.at <= best.at) && !(best.cat === "weapon" && base) ) inferred = best;
+  }
+  // "Sentinel Shield", "Flame Tongue Longsword": a base item named in the title.
+  if ( titleBase && !/staff$/.test(titleBase.n) ) {
+    const cat = titleBase.kind === "weapon" ? "weapon" : "armor";
+    findings.push({ label: `Base item: ${titleBase.e.name}`, tier: 1, sentence: findings.find(f => f.basics?.name)?.sentence ?? "",
+      basics: { category: cat, baseUuid: titleBase.e.uuid, ...(cat === "armor" ? { armorType: titleBase.kind === "shield" ? "shield" : (titleBase.e.armorType || "") } : {}) } });
+    inferred = null;
+    category = cat;
+  }
+  if ( inferred ) category = inferred.cat;
+
 
 
   for ( const { text: original, tier } of list ) {
@@ -311,8 +379,10 @@ export function parseDescription(text, ctx={}) {
     // "Greataxe named Sun Cleaver" / "A flaming longsword": the base item named at the start of the description.
     // Otherwise the first base item mentioned anywhere (tier 1), ignoring comparisons such as "like a dagger".
     const plain = s.replace(/\b(?:like|as|than|resembl\w*|shaped like)\s+(?:an?|the)\s+[a-z' -]+?(?=[,.;]|$)/g, " ");
-    const anyBase = tier === 1 && !baseKnown() ? findBase(plain) : null;
-    const base = typed ? findBase(typed[2]) : (enh ? findBase(enh[2]) : null) ?? anyBase;
+    const anyBase = tier === 1 && !baseKnown() && !["equipment", "consumable"].includes(inferred?.cat) ? findBase(plain) : null;
+    // "+1 longsword" / "+2 magic dagger": the base item right after the bonus, not one mentioned later.
+    const enhBase = enh ? findBase(enh[2]) : null;
+    const base = typed ? findBase(typed[2]) : (enhBase && enhBase.at <= 12 ? enhBase : null) ?? anyBase;
     if ( base ) {
       const cat = base.kind === "weapon" ? "weapon" : "armor";
       category = cat;
@@ -393,24 +463,28 @@ export function parseDescription(text, ctx={}) {
     }
 
     // --- Light ---
-    if ( /\b(?:sheds?|emits?|gives? off|casts?) (?:bright |dim )?light\b|\bglows?\b|\bas a light source\b/.test(s) ) {
-      const bright = Number(s.match(/bright light (?:in|out to|within) (?:a )?(\d+)/)?.[1] ?? 0);
-      const extra = s.match(/dim light for an additional (\d+)/);
-      const dimTotal = s.match(/dim light (?:in|out to|within) (?:a )?(\d+)/);
+    if ( /\b(?:sheds?|emits?|gives? off|casts?|radiates?|produces?|creates?) (?:[a-z]+ ){0,2}light\b|\bglows?\b|\bas a light source\b|\b(?:bright|dim) light (?:in |out to |within |of |for )?(?:an? )?\d+/.test(s) && !/\bthe light is\b|\bin dim light or darkness\b|\bdim light or darkness\b/.test(s) ) {
+      const bright = Number(s.match(/bright light (?:in |out to |within |of |for |to )?(?:an? )?(\d+)/)?.[1] ?? 0);
+      const extra = s.match(/dim(?: light)? (?:for |out to |to )?(?:an? )?(?:additional|another|further|extra) (\d+)|(\d+) feet (?:of )?dim light beyond/);
+      const dimTotal = s.match(/dim(?: light)? (?:in |out to |within |of |for |to )?(?:an? )?(\d+)/);
       const b = bright || (dimTotal ? 0 : 20);
-      const dim = extra ? b + Number(extra[1]) : dimTotal ? Number(dimTotal[1]) : b * 2;
+      const dim = extra ? b + Number(extra[1] ?? extra[2]) : dimTotal ? Math.max(Number(dimTotal[1]), b) : b * 2;
       const activation = /bonus action/.test(s) ? "bonus" : /\bno action\b|\bfree\b|\bat will\b/.test(s) ? "none" : "action";
       add(`Light: ${b} ft. bright, ${dim} ft. dim`, { type: "light", name: "Light", bright: String(b), dim: String(dim), activation, startOn: /\balways\b|\bconstantly\b/.test(s) });
     }
 
     // --- Spells ---
-    const castWord = /\bcast\b|\bcantrip\b|\bknow the\b|\bspell\b/.test(s);
+    // The item casts it ("you can cast", "casts", "scroll of"), not a spell merely mentioned
+    // ("the curse ends if Remove Curse is cast on you", "an Identify spell reveals…").
+    const castWord = (/\bcasts?\b|\bcasting\b|\bcantrip\b|\bknow the\b|\bscroll of\b|\bspell scroll\b|\bspells? (?:from|stored)\b/.test(s)
+      || /\b(?:grants?|gives?|has|have) (?:the (?:effects?|benefits?) of )?(?:the |an? )?[a-z' ]+ spell\b/.test(s))
+      && !/\b(?:is|are|was|been|be|being) cast\b|\bcast (?:on|upon|targeting) (?:you|it|them|the (?:item|wearer|wielder|armor|weapon))\b|\bunless\b[^.;]*\bcast\b/.test(s);
     if ( (castWord || usesIn(s, T)) && (ctx.spells ?? []).length ) {
       let rest = s;
       const spells = [];
       for ( const sp of [...ctx.spells].sort((a, b) => b.name.length - a.name.length) ) {
         const n = String(sp.name).toLowerCase();
-        if ( n.length < 4 || (!castWord && (n.length < 7 || !n.includes(" "))) ) continue;
+        if ( n.length < 3 || (!castWord && (n.length < 7 || !n.includes(" "))) ) continue;
         const re = new RegExp(`(?<![a-z])${reEsc(n)}(?![a-z])`);
         if ( re.test(rest) ) { spells.push(sp); rest = rest.replace(re, " "); }
       }
@@ -498,7 +572,7 @@ export function parseDescription(text, ctx={}) {
         add(`${label} speed ${m[2]} ft.`, { type: "movement", name: `${label} Speed`, movementType: t, mode: "override", value: m[2] });
       }
       const inc = s.match(/(?:(walking|flying|swimming|climbing|burrowing) )?speed (?:increases|is increased|improves) by (\d+)|\+\s*(\d+) feet to (?:your )?(?:(walking|flying|swimming|climbing) )?speed|(\d+) (?:extra|additional) feet of (?:(walking|flying|swimming|climbing) )?(?:movement|speed)/);
-      if ( (m = s.match(/\b(fly|swim|climb|burrow)\s+(?:at|up to|with a speed of)\s+(\d+)/)) && !seen.has(MOVE_WORDS[m[1]]) ) {
+      if ( (m = s.match(/\b(fly|swim|climb|burrow)\s+(?:at\s+|up to\s+|with a speed of\s+)?(\d+) feet/)) && !seen.has(MOVE_WORDS[m[1]]) ) {
         const t = MOVE_WORDS[m[1]]; seen.add(t);
         add(`${MOVE_LABELS[t]} speed ${m[2]} ft.`, { type: "movement", name: `${MOVE_LABELS[t]} Speed`, movementType: t, mode: "override", value: m[2] });
       }
@@ -537,11 +611,11 @@ export function parseDescription(text, ctx={}) {
     if ( !requirementSentence && !halfAsi ) {
       for ( const [k, l] of T.abilities ) {
         const L = reEsc(l);
-        if ( (m = s.match(new RegExp(`${L} (?:score )?(?:is|becomes|changes to|is set to|equals) (\\d+)|(?:sets? |set )(?:your )?${L}(?: score)? to (\\d+)|your ${L}(?: score)? to (\\d+)|${L} (?:score )?of (\\d+)(?! or)`))) ) {
-          const v = m[1] ?? m[2] ?? m[3] ?? m[4];
+        if ( (m = s.match(new RegExp(`^(?:your )?${L}(?: score)?:? (\\d{2})\\b(?! or)(?![^.;]*\\b(?:or higher|at least|minimum|required)\\b)|${L} (?:score )?(?:is|becomes|changes to|is set to|equals) (\\d+)|(?:sets? |set )(?:your )?${L}(?: score)? to (\\d+)|your ${L}(?: score)? to (\\d+)|${L} (?:score )?of (\\d+)(?! or)`))) ) {
+          const v = m[1] ?? m[2] ?? m[3] ?? m[4] ?? m[5];
           add(`${cap(l)} becomes ${v}`, { type: "ability", name: `${cap(l)} ${v}`, ability: k, mode: "override", value: v });
-        } else if ( (m = s.match(new RegExp(`${L}(?: score)? increases by (\\d+)|increases? (?:your )?${L}(?: score)? by (\\d+)|\\+\\s*(\\d+) (?:bonus )?(?:to )?(?:your )?${L}(?! saving| check)`))) ) {
-          const v = m[1] ?? m[2] ?? m[3];
+        } else if ( (m = s.match(new RegExp(`${L}(?: score)? increases by (\\d+)|increases? (?:your )?${L}(?: score)? by (\\d+)|\\+\\s*(\\d+) (?:bonus )?(?:to )?(?:your )?${L}(?! saving| check)|(?<![a-z])${L}(?: score)? \\+\\s*(\\d+)`))) ) {
+          const v = m[1] ?? m[2] ?? m[3] ?? m[4];
           add(`${cap(l)} +${v}`, { type: "ability", name: `${cap(l)} +${v}`, ability: k, mode: "add", value: v });
         }
       }
@@ -557,30 +631,68 @@ export function parseDescription(text, ctx={}) {
     }
 
     // --- Advantage / disadvantage ---
-    if ( (m = s.match(ADV_RE)) && !requirementSentence ) {
-      const kind = m[1], p = m[2];
-      if ( kind === "advantage" && /saving throws? against (?:spells|magic)/.test(p) ) {
-        const magic = /magical effects|magic\b/.test(p);
-        add(`Advantage on saves against spells${magic ? " and magic" : ""}`, { type: "defensive", effect: "saveAdvantage", name: "Magic Resistance", trigger: magic ? "saveAgainstMagic" : "saveAgainstSpell", ability: "" });
-      } else if ( /initiative/.test(p) && found.initiativeAdv && kind === "advantage" ) { /* part of the Initiative suggestion */ }
-      else if ( /initiative/.test(p) ) add(`${cap(kind)} on initiative`, { type: "utility", effect: kind, name: `${cap(kind)}: Initiative`, rollTarget: "initiative" });
-      else if ( /concentration/.test(p) ) add(`${cap(kind)} on concentration saves`, { type: "utility", effect: kind, name: `${cap(kind)}: Concentration`, rollTarget: "concentration" });
-      else if ( /attack rolls?/.test(p) ) {
-        if ( kind === "advantage" ) {
-          const who = creaturesIn(p, T);
-          add(`Advantage on attack rolls${who.length ? ` against ${who.join(", ")}` : ""}`, { type: "offensive", effect: "attackAdvantage", name: "Attack Advantage", targetTypes: who });
-        } else add("Disadvantage on attack rolls", { type: "utility", effect: "disadvantage", name: "Disadvantage: Attacks", rollTarget: "attack" });
-      } else {
+    // Every "advantage on/against …" clause: what kind of roll, and against what (conditions such
+    // as charm or fear, creature types or subtypes such as undead or vampires, spells or magic).
+    if ( !requirementSentence ) {
+      const advRe = /\b(advantage|disadvantage)\s+(?:on|against|to|when|for|with|in)\s+([^.;]+?)(?=[.;]|,\s*(?:and\s+)?(?:you|it|the|while|but|plus)\b|\s+and\s+(?:you|it|the wearer|the wielder|gains?|has|have|can)\b|$)/g;
+      // "advantage on initiative and Perception checks" is two rolls; "against being charmed or frightened" is one.
+      const kindOf = p => /\binitiative\b/.test(p) ? "initiative" : /\bconcentration\b/.test(p) ? "concentration" : /\battack/.test(p) ? "attack"
+        : skillsIn(p, T).length ? "skill" : /\bsaving throws?\b/.test(p) ? "save" : /\bchecks?\b/.test(p) ? "check" : "";
+      const clauses = [];
+      for ( const am of s.matchAll(advRe) ) {
+        // Not ours to automate: "no disadvantage", "creatures have disadvantage on attack rolls against you",
+        // "disadvantage … with weapons other than this bow".
+        const before = s.slice(Math.max(0, am.index - 60), am.index);
+        if ( /\b(?:no|no longer|without|don't|doesn't|do not|does not|not|never|ignores?|suffers? no|lose|loses)\s+(?:longer\s+)?(?:have\s+|has\s+)?$/.test(before) ) continue;
+        if ( /\b(?:creatures?|attackers?|enemies|foes|they|targets?|anyone|others?|each (?:creature|enemy))\b[^.;,]{0,25}\b(?:have|has|gets?|suffers?|makes?|rolls?)\s+$/.test(before) && !/\byou\s+(?:have|gain)\s+$/.test(before) ) continue;
+        if ( /\bagainst you\b|\bother than\b|\bother weapons\b|\bexcept\b/.test(am[2]) || /\bwhile your (?!item|weapon|armor)\w+ (?:lives|is alive|exists)\b/.test(s) ) continue;
+        const parts = am[2].split(/,\s*(?:and\s+|or\s+)?|\s+(?:and|or)\s+/);
+        const kinds = parts.map(kindOf).filter(Boolean);
+        if ( new Set(kinds).size > 1 ) {
+          let carry = "";
+          for ( const part of parts ) { const k = kindOf(part); if ( k ) carry = k; clauses.push([am[1], k ? part : `${part} ${carry === "skill" ? "checks" : carry === "save" ? "saving throws" : carry}`]); }
+        } else clauses.push([am[1], am[2]]);
+      }
+      for ( const [kind, p] of clauses ) {
+        const conds = conditionsIn(p, T).filter(c => !(c === "invisible" && /\binvisible creatures?\b/.test(p)));
+        const types = creaturesIn(p, T), subs = subtypesIn(p);
+        const magic = /\bspells?\b|\bmagic(?:al)?\b/.test(p) && !/spell attack/.test(p);
+        const ab = abilityIn(p, T);
         const sk = skillsIn(p, T);
-        if ( sk.length ) for ( const k of sk ) {
-          const label = T.skills.find(([key]) => key === k)[1];
-          add(`${cap(kind)} on ${cap(label)} checks`, { type: "utility", effect: kind, name: `${cap(kind)}: ${cap(label)}`, rollTarget: "skill", skill: k });
-        } else if ( /saving throws?/.test(p) ) {
-          const ab = abilityIn(p, T);
-          add(`${cap(kind)} on ${ab ? cap(T.abilities.find(([k]) => k === ab)[1]) + " " : ""}saving throws`, { type: "utility", effect: kind, name: `${cap(kind)}: Saves`, rollTarget: "save", ability: ab });
-        } else if ( /checks?/.test(p) ) {
-          const ab = abilityIn(p, T);
-          add(`${cap(kind)} on ${ab ? cap(T.abilities.find(([k]) => k === ab)[1]) + " " : ""}ability checks`, { type: "utility", effect: kind, name: `${cap(kind)}: Checks`, rollTarget: "check", ability: ab });
+        const who = [...types.map(plural), ...subs.map(plural)].join(", ");
+        const filter = { ...(types.length ? { sourceTypes: types } : {}), ...(subs.length ? { sourceSubtype: subs[0] } : {}) };
+        const Kind = cap(kind);
+        let rollKind = /\binitiative\b/.test(p) ? "initiative" : /\bconcentration\b/.test(p) ? "concentration"
+          : /\battack(?:s| rolls?)?\b/.test(p) ? "attack" : sk.length ? "skill"
+          : /\bsaving throws?\b|\bresist(?:ing)?\b|\bavoid\w*\b|\beffects?\b|\bbeing\b/.test(p) || conds.length || magic ? "save"
+          : /\bchecks?\b/.test(p) || ab ? "check" : (types.length || subs.length) ? "save" : "";
+        if ( rollKind === "initiative" ) {
+          if ( !(found.initiativeAdv && kind === "advantage") ) add(`${Kind} on initiative`, { type: "utility", effect: kind, name: `${Kind}: Initiative`, rollTarget: "initiative" });
+        } else if ( rollKind === "concentration" ) add(`${Kind} on concentration saves`, { type: "utility", effect: kind, name: `${Kind}: Concentration`, rollTarget: "concentration" });
+        else if ( rollKind === "attack" ) {
+          if ( kind === "advantage" ) add(`Advantage on attack rolls${who ? ` against ${who}` : ""}`, { type: "offensive", effect: "attackAdvantage", name: "Attack Advantage", targetTypes: types, ...(subs.length ? { targetSubtype: subs[0] } : {}) });
+          else add("Disadvantage on attack rolls", { type: "utility", effect: "disadvantage", name: "Disadvantage: Attacks", rollTarget: "attack" });
+        } else if ( rollKind === "skill" ) {
+          for ( const k of sk ) {
+            const label = titled(T.skills.find(([key]) => key === k)[1]);
+            add(`${Kind} on ${label} checks`, { type: "utility", effect: kind, name: `${Kind}: ${label}`, rollTarget: "skill", skill: k });
+          }
+        } else if ( rollKind === "save" ) {
+          const abName = ab ? `${cap(T.abilities.find(([k]) => k === ab)[1])} ` : "";
+          if ( kind === "advantage" && conds.length ) {
+            for ( const c of conds ) {
+              const cName = cap(T.conditions.find(([k]) => k === c)?.[1] ?? c);
+              add(`Advantage on ${abName}saves against ${cName}${who ? ` (from ${who})` : ""}`, { type: "defensive", effect: "saveAdvantage", name: `Resist ${cName}`, trigger: "saveAgainstCondition", status: c, ability: ab, ...filter });
+            }
+          } else if ( kind === "advantage" && magic ) {
+            const both = /magical effects|\bmagic(?:al)?\b/.test(p);
+            add(`Advantage on ${abName}saves against spells${both ? " and magic" : ""}${who ? ` (from ${who})` : ""}`, { type: "defensive", effect: "saveAdvantage", name: "Magic Resistance", trigger: both ? "saveAgainstMagic" : "saveAgainstSpell", ability: ab, ...filter });
+          } else if ( kind === "advantage" && who ) {
+            add(`Advantage on ${abName}saves against ${who}`, { type: "defensive", effect: "saveAdvantage", name: `Resist ${who}`, trigger: "damage", ability: ab, ...filter });
+          } else add(`${Kind} on ${abName}saving throws`, { type: "utility", effect: kind, name: `${Kind}: Saves`, rollTarget: "save", ability: ab });
+        } else if ( rollKind === "check" ) {
+          const abName = ab ? `${cap(T.abilities.find(([k]) => k === ab)[1])} ` : "";
+          add(`${Kind} on ${abName}ability checks`, { type: "utility", effect: kind, name: `${Kind}: Checks`, rollTarget: "check", ability: ab });
         }
       }
     }
@@ -598,17 +710,57 @@ export function parseDescription(text, ctx={}) {
       const ab = saveM[2] ? abilityIn(saveM[2], T) : "";
       add(`+${v} to ${ab ? cap(T.abilities.find(([k]) => k === ab)[1]) + " " : ""}saving throws`, { type: "defensive", effect: "saveBonus", name: `+${v} Saving Throws`, formula: v, trigger: "damage", ability: ab });
     }
-    const atk = s.match(/\+\s*(\d+)\s*(?:bonus )?(?:to )?(?:its |your )?(?:attack(?: rolls?)?|hit)(?: and damage(?: rolls?)?)?(?![a-z])/);
+    const atk = s.match(/\+\s*(\d+)\s*(?:bonus )?(?:to )?(?:its |your )?(?:attack(?: rolls?)?|hit(?! points| dice| die))(?: and damage(?: rolls?)?)?(?![a-z])/);
     if ( atk && !/spell attack/.test(s) ) {
       const both = /and damage/.test(atk[0]);
       if ( both && category === "weapon" && !found.some(f => f.basics?.enhancementBonus) && Number(atk[1]) <= 3 ) add(`+${atk[1]} weapon enhancement`, null, { enhancementBonus: atk[1] });
       else if ( !both ) add(`+${atk[1]} to attack rolls`, { type: "offensive", effect: "attackBonus", name: `+${atk[1]} Attack`, formula: atk[1] });
-      else if ( !found.some(f => f.basics?.enhancementBonus) ) add(`+${atk[1]} to attack and damage rolls`, null, { enhancementBonus: atk[1], category: "weapon" });
+      else if ( ["equipment"].includes(category) ) {
+        add(`+${atk[1]} to attack rolls`, { type: "offensive", effect: "attackBonus", name: `+${atk[1]} Attack`, formula: atk[1] });
+        add(`+${atk[1]} to weapon damage rolls`, { type: "utility", effect: "activeEffect", name: `+${atk[1]} Weapon Damage`, activeEffectKey: "system.bonuses.mwak.damage", activeEffectMode: "2", activeEffectValue: atk[1] });
+      }
+      else if ( category !== "consumable" && !found.some(f => f.basics?.enhancementBonus) ) add(`+${atk[1]} to attack and damage rolls`, null, { enhancementBonus: atk[1], category: "weapon" });
+    }
+
+    // --- Other bonuses written as Active Effects: spell attack, spell save DC, skill checks, weapon damage ---
+    {
+      const ae = (label, name, key, value) => add(label, { type: "utility", effect: "activeEffect", name, activeEffectKey: key, activeEffectMode: "2", activeEffectValue: String(value) });
+      if ( (m = s.match(/\+\s*(\d+)\s*(?:bonus )?(?:to |on )?(?:your )?spell attack(?: rolls?)?/)) ) {
+        ae(`Spell attack +${m[1]} (melee spells)`, `Spell Attack +${m[1]} (melee)`, "system.bonuses.msak.attack", m[1]);
+        ae(`Spell attack +${m[1]} (ranged spells)`, `Spell Attack +${m[1]} (ranged)`, "system.bonuses.rsak.attack", m[1]);
+      }
+      if ( (m = s.match(/\+\s*(\d+)\s*(?:bonus )?(?:to |on )?(?:your )?(?:spell attack rolls? and (?:your )?)?spell save dc|spell save dc (?:increases by |\+\s*)(\d+)/)) ) {
+        ae(`Spell save DC +${m[1] ?? m[2]}`, `Spell Save DC +${m[1] ?? m[2]}`, "system.bonuses.spell.dc", m[1] ?? m[2]);
+      }
+      // "+2 Perception and Insight", "+5 to Sleight of Hand checks", "Stealth +3"
+      const skillBonus = new Map();
+      for ( const bm of s.matchAll(/\+\s*(\d+)\s*(?:bonus )?(?:to |on )?(?:your )?([^.;+]*)/g) ) {
+        const seg = bm[2].split(/\b(?:ac|armor class|attack|saving throws?|damage|initiative|speed)\b/)[0];
+        for ( const k of skillsIn(seg, T) ) if ( !skillBonus.has(k) ) skillBonus.set(k, bm[1]);
+      }
+      for ( const [k, l] of T.skills ) {
+        const sm = s.match(new RegExp(`(?<![a-z])${reEsc(l)}(?: checks?)? \\+\\s*(\\d+)`));
+        if ( sm && !skillBonus.has(k) ) skillBonus.set(k, sm[1]);
+      }
+      for ( const [k, v] of skillBonus ) {
+        const label = titled(T.skills.find(([key]) => key === k)[1]);
+        ae(`${label} +${v}`, `${label} +${v}`, `system.skills.${k}.bonuses.check`, v);
+      }
+      // "+2 to Charisma checks"
+      for ( const [k, l] of T.abilities ) {
+        const cm = s.match(new RegExp(`\\+\\s*(\\d+)\\s*(?:bonus )?(?:to |on )?(?:your )?${reEsc(l)} (?:ability )?checks?`));
+        if ( cm ) ae(`+${cm[1]} to ${cap(l)} checks`, `${cap(l)} Checks +${cm[1]}`, `system.abilities.${k}.bonuses.check`, cm[1]);
+      }
+      if ( (m = s.match(/\+\s*(\d+)\s*(?:bonus )?to (?:your )?damage rolls? (?:with|made with|for|using) (ranged|melee) weapons?/)) ) {
+        const k = m[2] === "ranged" ? "rwak" : "mwak";
+        ae(`+${m[1]} damage with ${m[2]} weapons`, `${cap(m[2])} Damage +${m[1]}`, `system.bonuses.${k}.damage`, m[1]);
+      }
     }
 
     // --- Extra damage ---
     {
-      const re = new RegExp(`(?:(?:extra|additional|bonus)\\s+${formulaRe}|${formulaRe}\\s+(?:extra|additional|bonus))\\s+([a-z]+)\\s+damage`, "g");
+      const dmgWords = T.damage.map(([, l]) => reEsc(l)).join("|") || "fire";
+      const re = new RegExp(`(?:(?:extra|additional|bonus)\\s+${formulaRe}|${formulaRe}\\s+(?:extra|additional|bonus))\\s+([a-z]+)(?:\\s+damage\\b|(?<=\\s(?:${dmgWords}))(?![a-z])(?!\\s+(?:resistance|immunity|vulnerability)))`, "g");
       while ( (m = re.exec(s)) ) {
         m = [m[0], m[1] ?? m[2], m[3]];
         const t = damageTypesIn(m[2], T)[0];
@@ -684,7 +836,7 @@ export function parseDescription(text, ctx={}) {
     }
 
     // --- Condition immunity ---
-    if ( /\bimmun(?:e|ity)\b|\bcan't be\b|\bcannot be\b/.test(s) && !/damage\b/.test(s.match(/\bimmun(?:e|ity)\b[^.;]*/)?.[0] ?? "") ) {
+    if ( /\bimmun(?:e|ity)\b|\bcan't be\b|\bcannot be\b/.test(s) ) {
       for ( const [k, l] of T.conditions ) {
         if ( new RegExp(`(?:immun(?:e|ity) to (?:being |the )?|can't be |cannot be )[a-z, ]*(?<![a-z])${reEsc(l)}(?![a-z])`).test(s) ) {
           add(`Immune to ${l}`, { type: "utility", effect: "activeEffect", name: `Immune: ${cap(l)}`, activeEffectKey: "system.traits.ci.value", activeEffectMode: "2", activeEffectValue: k });
@@ -706,6 +858,15 @@ export function parseDescription(text, ctx={}) {
     else if ( (m = s.match(new RegExp(`(?:restores?|heals?|regains?) (?:an )?(?:additional|extra) ${formulaRe} hit points`))) && /\byou (?:cast|use|heal|restore)|\bwhen you\b.*\b(?:heal|restore)/.test(s) ) add(`Bonus healing +${m[1]}`, { type: "healing", effect: "bonusHealing", name: "Bonus Healing", formula: m[1] });
     if ( (m = s.match(/(?:spend|roll) (?:a )?hit (?:die|dice)[^.;]*?(?:additional|extra) (\d+)/)) ) add(`Hit Dice recovery +${m[1]}`, { type: "healing", effect: "recoveryBonus", name: "Recovery Bonus", formula: m[1] });
 
+    // "The wand regains 1d6 + 1 expended charges daily at dawn": the recovery for spells using its charges.
+    if ( !found.length && /\bregains?\b[^.;]*\bcharges?\b|\bcharges?\b[^.;]*\bregain/.test(s) ) {
+      const rec = /\bdawn\b/.test(s) ? "dawn" : /short rest/.test(s) ? "sr" : /long rest/.test(s) ? "lr" : /\bday\b|\bdaily\b/.test(s) ? "day" : "";
+      const charged = findings.filter(f => f.component?.type === "spell" && f.fromCharges);
+      if ( rec && charged.length ) {
+        for ( const f of charged ) { f.component.recovery = rec; f.label = f.label.replace(/ \([^)]*\)$/, "") + usesNote(f.component); f.sentence += " " + original; }
+        continue;
+      }
+    }
     // Charges or uses described for the whole item, picked up by the spells that follow.
     const u = usesIn(s, T);
     if ( !found.length && u && u.usesMode !== "unlimited" && /\bcharges?\b|\buses\b|\bregains?\b/.test(s) ) {
@@ -717,6 +878,7 @@ export function parseDescription(text, ctx={}) {
       for ( const f of found ) {
         if ( f.component?.type !== "spell" || (f.component.usesMode && !/\bcharges?\b/.test(s)) ) continue;
         Object.assign(f.component, pendingUses.u);
+        f.fromCharges = true;
         f.label = f.label.replace(/ \([^)]*\)$/, "") + usesNote(pendingUses.u);
         f.sentence = `${pendingUses.entry.text} ${f.sentence}`;
         const i = leftovers.indexOf(pendingUses.entry);
@@ -727,16 +889,65 @@ export function parseDescription(text, ctx={}) {
     const when = /\bwhile (?:you(?:'re| are) )?attuned\b|\bwhile attuned\b|\bwhen attuned\b/.test(s) ? "attuned"
       : /\bwhile (?:you )?(?:wear|wearing|worn|wield|wielding|wielded|hold|holding|held|equipped)\b/.test(s) ? "equipped" : "";
     if ( when ) for ( const f of found ) if ( f.component && f.component.type !== "light" ) f.component.activation = when;
-    if ( found.length ) findings.push(...found);
+    if ( found.length ) {
+      findings.push(...found);
+      // A sentence can be part automated: "…, and you can breathe water." Clauses with a rule in them
+      // that nothing above turned into a component are kept as Rules Text.
+      if ( !ctx._clause && found.some(f => f.component) ) {
+        const clauses = original.split(/;\s*|,\s*(?:and\s+)?(?=(?:you|it|its|the|while|when|on a|once|as|if|this|creatures?|targets?|allies)\b)|\s+and\s+(?=(?:you|it|its|the wielder|the wearer|the target)\b)/i)
+          .map(c => c.trim()).filter(c => c.split(/\s+/).length >= 4);
+        if ( clauses.length > 1 ) for ( const c of clauses ) {
+          if ( !CLAUSE_RULE.test(c) ) continue;
+          const sub = parseDescription(c, { ...ctx, _clause: true, category });
+          if ( !sub.findings.some(f => f.component || f.basics?.enhancementBonus || f.basics?.baseUuid) ) leftovers.push({ text: c, tier, clause: true });
+        }
+      }
+    }
     else leftovers.push({ text: original, tier });
+  }
+
+  // No base item and no item noun, but the builder is set to Weapon or Armor (which need a base
+  // item): this is most likely a wondrous item.
+  if ( !ctx._clause && !inferred && !ctx.baseUuid && findings.some(f => f.component) && !findings.some(f => f.basics?.category) && ["weapon", "armor", "focus"].includes(ctx.category)
+    && !findings.some(f => f.basics?.enhancementBonus) && !new RegExp(`(?<![a-z])(?:${ITEM_NOUNS.weapon}|${ITEM_NOUNS.armor}|shield)(?![a-z])`).test(norm(text)) ) {
+    inferred = { cat: "equipment", word: "no weapon or armor named" };
+  }
+  // Item kind from its noun, unless a base item already set it.
+  if ( inferred && !findings.some(f => f.basics?.category) && inferred.cat !== ctx.category ) {
+    findings.unshift({ label: `Category: ${CATEGORY_LABELS[inferred.cat]} (${/^no /.test(inferred.word) ? inferred.word : `from “${inferred.word}”`})`, tier: 1, sentence: "", basics: { category: inferred.cat } });
+  }
+
+  if ( ctx._clause ) return { findings, leftovers };
+  // Rule-like sentences nothing could automate become Rules Text, so players still see them.
+  const RULEY = /\b(advantage|disadvantage|bonus|resistan|immun|vulnerab|damage|cast|spell|charges?|saving throws?|\bsave\b|speed|darkvision|blindsight|truesight|proficien|expertise|reaction|bonus action|action|hit points|temporary|\bac\b|armor class|score|reach|regain|condition|initiative|teleport|fly|swim|climb|reroll|d20|attack|critical|hits?|breathe|underwater|lets?|allows?|grants?|gives?|you can|you have|can't|cannot|while (?:wearing|holding|attuned)|per (?:day|long rest|short rest)|once)\b/i;
+  const rules = new Map();
+  for ( const l of [...leftovers] ) {
+    if ( !RULEY.test(l.text) || l.text.split(/\s+/).length < 3 ) continue;
+    // "The blade deals 1d8 slashing damage." is the weapon's own damage, already on the base item.
+    if ( /^(?:the|this|its) (?:blade|weapon|sword|axe|hammer|bow|mace|spear|dagger) deals \d+d\d+ \w+ damage\.?$/i.test(l.text.trim()) ) continue;
+    (rules.get(l.tier) ?? rules.set(l.tier, []).get(l.tier)).push(l.text);
+    leftovers.splice(leftovers.indexOf(l), 1);
+  }
+  for ( const [tier, texts] of rules ) {
+    const short = texts[0].length > 60 ? texts[0].slice(0, 57) + "…" : texts[0];
+    findings.push({ label: `Rules text (not automated): “${short}”${texts.length > 1 ? ` +${texts.length - 1} more` : ""}`, tier, sentence: texts.join(" "),
+      component: { type: "reference", name: "Special Rules", text: texts.join(" ") } });
   }
 
   // "Requires attunement" + an armor/weapon type line is normal; drop duplicate base/enhancement suggestions.
   const seen = new Set();
+  const basicsSeen = new Set();
   const unique = findings.filter(f => {
     const key = f.label + "|" + f.tier;
     if ( seen.has(key) ) return false;
-    seen.add(key); return true;
+    seen.add(key);
+    // One value per basic setting: the first mention wins (a table of rarities, a second weapon named later).
+    if ( f.basics && !f.basics.tierRarity ) {
+      const keys = Object.keys(f.basics).filter(k => !["armorType"].includes(k));
+      if ( keys.length && keys.every(k => basicsSeen.has(k === "baseUuid" ? "base" : k)) ) return false;
+      for ( const k of keys ) basicsSeen.add(k === "baseUuid" ? "base" : k);
+    }
+    return true;
   });
   return { findings: unique, leftovers };
 

@@ -34,9 +34,9 @@ export const DAMAGE_RULES = new Set(["extraDamage", "sameTypeDamage", "resistanc
 export const OFFENSIVE_DAMAGE_RULES = new Set(["ignoreResistance", "ignoreImmunity", "ignoreResistanceImmunity", "causeVulnerability"]);
 export const DEFENSIVE_DAMAGE_RULES = new Set(["resistance", "immunity", "vulnerability"]);
 export const COVER_RULES = { ignoreHalfCover: "half", ignoreThreeQuartersCover: "threeQuarters", ignoreAllCover: "all" };
-export const DEFENSIVE_TRIGGERS = { damage: "When You Take Damage", struck: "When You Are Struck by an Attack", melee: "When Struck by a Melee Attack", ranged: "When Struck by a Ranged Attack", spell: "When Damaged by a Spell Attack", save: "When Damaged after a Saving Throw", saveAgainstSpell: "When Making a Save Against a Spell", saveAgainstMagic: "When Making a Save Against a Spell or Magical Effect" };
+export const DEFENSIVE_TRIGGERS = { damage: "When You Take Damage", struck: "When You Are Struck by an Attack", melee: "When Struck by a Melee Attack", ranged: "When Struck by a Ranged Attack", spell: "When Damaged by a Spell Attack", save: "When Damaged after a Saving Throw", saveAgainstSpell: "When Making a Save Against a Spell", saveAgainstMagic: "When Making a Save Against a Spell or Magical Effect", saveAgainstCondition: "When Making a Save Against a Condition" };
 /** Save triggers that restrict which saves a rule applies to. */
-export const SAVE_SOURCE_TRIGGERS = new Set(["saveAgainstSpell", "saveAgainstMagic"]);
+export const SAVE_SOURCE_TRIGGERS = new Set(["saveAgainstSpell", "saveAgainstMagic", "saveAgainstCondition"]);
 /** Creature sizes, smallest first. */
 export function sizeKeys() {
   const sizes = globalThis.CONFIG?.DND5E?.actorSizes ?? {};
@@ -79,11 +79,12 @@ export function triggerOptions(effect) {
     return {
       damage: "Any Saving Throw",
       saveAgainstMagic: "Only Saves Against Spells and Magical Effects",
-      saveAgainstSpell: "Only Saves Against Spells"
+      saveAgainstSpell: "Only Saves Against Spells",
+      saveAgainstCondition: "Only Saves Against a Condition (such as Charmed)"
     };
   }
   if ( effect === "acBonus" ) return { struck: "Any Attack", melee: "Melee Attacks Only", ranged: "Ranged Attacks Only", spell: "Spell Attacks Only" };
-  const { saveAgainstSpell, saveAgainstMagic, ...rest } = DEFENSIVE_TRIGGERS;
+  const { saveAgainstSpell, saveAgainstMagic, saveAgainstCondition, ...rest } = DEFENSIVE_TRIGGERS;
   return rest;
 }
 
@@ -986,8 +987,30 @@ function saveRollContext(config={}, message={}) {
     activityName: activity?.name ?? item?.name ?? "",
     ability: String(config.abilityId ?? config.ability ?? config.data?.ability ?? "").toLowerCase(),
     isSpell: isSpellSource(item, activity),
-    isMagical: magicHint || isMagicalSource(item, activity)
+    isMagical: magicHint || isMagicalSource(item, activity),
+    conditions: conditionsOfSource(item, activity)
   };
+}
+
+/**
+ * Conditions a save's source would apply: the statuses on the activity's (or item's) effects,
+ * otherwise conditions named in its description ("…or have the Charmed condition").
+ */
+export function conditionsOfSource(item, activity) {
+  const out = new Set();
+  const addStatuses = e => { for ( const s of e?.statuses ?? [] ) out.add(String(s).toLowerCase()); };
+  try {
+    for ( const ref of activity?.effects ?? [] ) addStatuses(ref?.effect ?? item?.effects?.get?.(ref?._id));
+    if ( !out.size ) for ( const e of item?.effects ?? [] ) if ( !e.transfer ) addStatuses(e);
+    if ( !out.size ) {
+      const text = `${activity?.description?.chatFlavor ?? ""} ${item?.system?.description?.value ?? ""}`.toLowerCase();
+      for ( const [id, cond] of Object.entries(globalThis.CONFIG?.DND5E?.conditionTypes ?? {}) ) {
+        const label = String(globalThis.game?.i18n?.localize?.(cond?.name ?? cond?.label ?? id) ?? id).toLowerCase();
+        if ( new RegExp(`\\b(?:${id}|${label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})\\b`).test(text) ) out.add(id);
+      }
+    }
+  } catch { /* unknown source */ }
+  return out;
 }
 
 const COVER_CAPS = { half: 2, threeQuarters: 5, all: 5 };
@@ -1328,6 +1351,7 @@ export function registerRuleHooks() {
           const trig = String(rule.trigger ?? "").toLowerCase();
           if ( trig === "saveagainstspell" && !ctx.isSpell ) { decisions.push(`${rule.name}: skipped (not a spell)`); continue; }
           if ( trig === "saveagainstmagic" && !ctx.isMagical ) { decisions.push(`${rule.name}: skipped (not magical)`); continue; }
+          if ( trig === "saveagainstcondition" && !(rule.status && ctx.conditions.has(String(rule.status).toLowerCase())) ) { decisions.push(`${rule.name}: skipped (save is not against ${rule.status || "the chosen condition"})`); continue; }
           if ( !match({ ...rule, trigger: "" }, { sourceActor: ctx.sourceActor, targetActor: ctx.actor, activityName: ctx.activityName, activityType: "save", actionType: "save" }) ) {
             decisions.push(`${rule.name}: skipped (creature/activity filters did not match)`); continue;
           }

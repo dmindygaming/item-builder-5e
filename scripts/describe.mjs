@@ -81,7 +81,7 @@ export function ruleSentence(c, { player=false }={}){
   if(c.ruleCategory==="defensive"){
     const trig=c.trigger||"damage";
     let t;
-    if(["saveBonus","saveAdvantage"].includes(c.effect))t={saveAgainstMagic:"against spells and magical effects",saveAgainstSpell:"against spells"}[trig]??"";
+    if(["saveBonus","saveAdvantage"].includes(c.effect))t={saveAgainstMagic:"against spells and magical effects",saveAgainstSpell:"against spells",saveAgainstCondition:c.status?`against being ${(()=>{const ct=cfg("conditionTypes",{})[c.status];return loc(ct?.name??ct?.label,c.status);})().toLowerCase()}`:"against conditions"}[trig]??"";
     else if(c.effect==="acBonus")t={melee:"against melee attacks",ranged:"against ranged attacks",spell:"against spell attacks"}[trig]??(player?"":"against attacks");
     else t=(player&&trig==="damage")?"":String(triggerOptions(c.effect)[trig]??"").toLowerCase();
     if(t)parts.push(t);
