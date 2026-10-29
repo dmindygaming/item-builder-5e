@@ -162,11 +162,13 @@ export function senseKey(sense="darkvision") {
 /* Bonus keys that D&D5e 6.0 moved (5.3 path ⇄ 6.0 path). */
 const BONUS_KEYS_5_TO_6 = [
   [/^system\.abilities\.(\w+)\.bonuses\.(check|save)$/, (_m, a, t) => `system.abilities.${a}.${t}.roll.bonus`],
+  [/^system\.(skills|tools)\.(\w+)\.bonuses\.check$/, (_m, k, x) => `system.${k}.${x}.roll.bonus`],
   [/^system\.bonuses\.abilities\.(check|save|skill)$/, (_m, t) => `system.rolls.ability.${t}.bonus`],
   [/^system\.bonuses\.(mwak|rwak|msak|rsak)\.(attack|damage)$/, (_m, a, t) => `system.rolls.${t}.${a}.bonus`]
 ];
 const BONUS_KEYS_6_TO_5 = [
   [/^system\.abilities\.(\w+)\.(check|save)\.roll\.bonus$/, (_m, a, t) => `system.abilities.${a}.bonuses.${t}`],
+  [/^system\.(skills|tools)\.(\w+)\.roll\.bonus$/, (_m, k, x) => `system.${k}.${x}.bonuses.check`],
   [/^system\.rolls\.ability\.(check|save|skill)\.bonus$/, (_m, t) => `system.bonuses.abilities.${t}`],
   [/^system\.rolls\.(attack|damage)\.(mwak|rwak|msak|rsak)\.bonus$/, (_m, t, a) => `system.bonuses.${a}.${t}`]
 ];

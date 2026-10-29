@@ -415,6 +415,17 @@ const ITEM_MAGIC = `!!(item?.properties?.has?.("mgc") || item?.properties?.inclu
 const MAGIC_EXPR = `(${SPELL_EXPR} || (workflow ? !!workflow?.item?.system?.properties?.has?.("mgc") : ${ITEM_MAGIC}))`;
 
 /**
+ * Midi-QOL expression: does the save's source apply this condition? Checks the activity's first
+ * effects' statuses, then the activity / item description (property access only, no functions).
+ */
+function conditionExpr(id) {
+  const has = i => `!!workflow?.activity?.effects?.[${i}]?.effect?.statuses?.has?.(${js(id)})`;
+  const text = lower(`(workflow?.activity?.description?.chatFlavor || "") + " " + (workflow?.item?.system?.description?.value || "")`);
+  const noWorkflow = lower(`item?.description?.value`);
+  return `(workflow ? (${has(0)} || ${has(1)} || ${has(2)} || ${text}.includes(${js(id)})) : ${noWorkflow}.includes(${js(id)}))`;
+}
+
+/**
  * Which roll an advantage-type rule affects, and the creature roles for its filters.
  * Returns null for rules that are not advantage / disadvantage.
  */
@@ -464,6 +475,10 @@ export function midiCondition(c, { itemName="", ownUse=false }={}) {
   if ( shape.roll === "save" ) {
     if ( shape.trigger === "saveAgainstSpell" ) parts.push(SPELL_EXPR);
     else if ( shape.trigger === "saveAgainstMagic" ) parts.push(MAGIC_EXPR);
+    else if ( shape.trigger === "saveAgainstCondition" ) {
+      if ( !c.status ) return "false";
+      parts.push(conditionExpr(String(c.status).toLowerCase()));
+    }
   }
   if ( shape.roll === "attack" && ownUse && itemName ) parts.push(`workflow?.item?.name === ${js(itemName)}`);
   return parts.length ? parts.join(" && ") : "true";
