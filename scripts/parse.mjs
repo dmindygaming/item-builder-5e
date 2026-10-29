@@ -66,6 +66,7 @@ function sentences(text, tierNames) {
 /** Normalised lower-case copy used for matching. */
 function norm(s) {
   return String(s).toLowerCase()
+    .replace(/&reference\[([a-z ]+?)(?:\s[^\]]*)?\](?:\{([^}]*)\})?/gi, (_m, a, b) => b || a).replace(/@uuid\[[^\]]*\]\{([^}]*)\}/gi, "$1")
     .replace(/[’‘]/g, "'").replace(/[“”]/g, "\"").replace(/[–—]/g, "-")
     .replace(/(\d+)\s*-?\s*(?:foot|feet|ft\.?)(?![a-z])/g, "$1 feet")
     .replace(/\bsaves\b/g, "saving throws")
@@ -219,6 +220,7 @@ export function parseDescription(text, ctx={}) {
     const m = n.match(SPLITS);
     if ( m && !n.includes(" ") && n.length > m[1].length + 2 ) forms.add(`${n.slice(0, -m[1].length)}[ -]?${m[1]}`);
     forms.add(n.replace(/ /g, "[ -]?"));
+    if ( / armor$/.test(n) && n.split(" ").length > 2 ) forms.add(n.replace(/ armor$/, "").replace(/ /g, "[ -]?"));
     return new RegExp(`(?<![a-z])(?:${[...forms].map(f => f.includes("[") ? f : reEsc(f)).join("|")})(?:s|es)?(?![a-z])`);
   };
   const findBase = s => {
@@ -254,7 +256,18 @@ export function parseDescription(text, ctx={}) {
     list.shift();
     titleBase = findBase(norm(first));
   }
+  // "Cloak of the Mountain: resistance to cold…" — a title before a colon, then the rules.
+  const colonName = !ctx._clause && !findings.some(f => f.basics?.name) && list[0]
+    ? list[0].text.match(/^([A-Z][\w'’-]*(?: (?:of|the|and|[A-Z][\w'’-]*)){0,5}):\s+(\S.*)$/) : null;
+  if ( colonName && !/^(?:weapon|armor|armour|feat|background|skills?|tools?|ability scores?|tier \d+|rarity|name|type|item|spells?|cantrips?|origin feat|languages?|equipment|attunement)$/i.test(colonName[1]) && !isJustBase(colonName[1]) ) {
+    findings.push({ label: `Name: ${colonName[1]}`, tier: 1, sentence: list[0].text, basics: { name: colonName[1] } });
+    titleBase = findBase(norm(colonName[1]));
+    list[0] = { ...list[0], text: colonName[2] };
+  }
+  const firstText = list[0]?.text;
   let pendingUses = null;   // "The cloak has 3 charges..." waiting for the spells that use them.
+  let spellTable = null;    // inside a "cast one of the spells on the following table" list
+  const spellList = [...(ctx.spells ?? [])].sort((a, b) => b.name.length - a.name.length);
 
   // What kind of item is it? The first item noun in the name or opening sentence ("Ring of…",
   // "A magical neckguard…", "Potion of…"). A base item found later (longsword, plate armor) wins.
@@ -282,11 +295,45 @@ export function parseDescription(text, ctx={}) {
 
 
 
+  // "+2 bonus to Armor Class, saving throws, and spell attack rolls" → one bonus per roll.
+  const BONUS_TARGET = "(?:your )?(?:armor class|ac|saving throws|spell attack rolls?|spell save dc|ability checks|attack rolls(?: and damage rolls)?|attack and damage rolls|initiative(?: rolls)?)";
+  const expandBonuses = t => t
+    .replace(new RegExp(`(\\+\\s*\\d+)( bonus)? (to|on) (${BONUS_TARGET}(?:(?:,|,? and) ${BONUS_TARGET})+)(?![a-z])`, "g"), (_m, n, b = "", p, list) =>
+      list.split(/,? and |, /).map(x => `${n}${b} ${p} ${x.trim()}`).join(", and "))
+    // "Your spell save DC and spell attack bonus each increase by 2"
+    .replace(/\byour ((?:spell save dc|spell attack bonus|ac|armor class))(?: and (?:your )?(spell save dc|spell attack bonus|ac|armor class))? (?:each |both )?(?:increases?|improves?) by (\d+)/g, (_m, a, b, n) =>
+      [a, b].filter(Boolean).map(x => `+${n} bonus to ${x.replace("spell attack bonus", "spell attack rolls")}`).join(", and "));
+  let statCarry = false;   // inside an object's or creature's statistics, which can run over several sentences
   for ( const { text: original, tier } of list ) {
-    const s = norm(original);
+    const s = expandBonuses(norm(original));
+    const statHere = /\b(?:ac|armor class) \d+\b(?! *\+)[^.]*$|\bhit points \d+\b|following statistics/.test(s) && !/\byour? (?:ac|armor class)\b|bonus to (?:your )?(?:ac|armor class)/.test(s);
+    const statBlock = statHere || (statCarry && !/\byou\b/.test(s));
+    statCarry = statBlock;
     const found = [];
     const add = (label, component, basics) => found.push({ label, tier, sentence: original, ...(component ? { component } : {}), ...(basics ? { basics } : {}) });
     let m;
+
+    // --- Rows of a spell table ("Cure Wounds / 1 charge per spell level", "Fireball (level 5 version) / 5") ---
+    if ( spellTable && spellTable.tier === tier ) {
+      const words = s.split(/\s+/).length;
+      // A row is a spell name, maybe with a note in brackets and the charge cost run on: "Burning Hands1".
+      const row = s.replace(/\([^)]*\)/g, " ").replace(/[\s\d|–-]*(?:charges?[^a-z]*)?(?:per spell level.*)?$/, "").replace(/[.:,]$/, "").trim();
+      const sp = spellList.find(x => String(x.name).toLowerCase() === row);
+      if ( sp ) {
+        const lv = s.match(/\((?:level|lvl\.?)\s*(\d)/)?.[1];
+        const u = pendingUses?.u;
+        found.push({ label: `Spell: ${sp.name}${usesNote(u)}`, tier, sentence: original, fromCharges: !!u,
+          component: { type: "spell", name: sp.name, spellUuid: sp.uuid, ...(lv ? { level: lv } : {}), ...(u ?? {}) } });
+        if ( pendingUses ) { const i = leftovers.indexOf(pendingUses.entry); if ( i >= 0 ) leftovers.splice(i, 1); }
+        spellTable.rows = (spellTable.rows ?? 0) + 1;
+        findings.push(...found);
+        continue;
+      }
+      // Table furniture: headings and charge costs.
+      if ( words <= 12 && (/^(?:spells?(?: cost table)?(?:spell)?(?:\s*charge cost)?|charge cost|cost|level|charges?|\d+(?:\s*charges?)?(?:[^a-z]|$)|\d+ charges? per spell level\b)/.test(s) || /\bspell\s*charge cost$/.test(s)) ) continue;
+      // A prose line or two (charges, how to use it) can come before the rows start.
+      if ( spellTable.rows || (spellTable.prose = (spellTable.prose ?? 0) + 1) > 2 ) { if ( words > 14 || /\bregain/.test(s) || spellTable.rows ) spellTable = null; }
+    }
 
     // --- Follow-up sentences that refine the previous suggestion ---
     const lastUsable = [...findings].reverse().find(f => ["reaction", "spell"].includes(f.component?.type));
@@ -307,15 +354,19 @@ export function parseDescription(text, ctx={}) {
     }
 
     // --- Item type line: "Weapon (longsword), rare (requires attunement by a paladin)" ---
-    const rarity = RARITY_WORDS.find(([w]) => new RegExp(`(?<![a-z])${w}(?![a-z])\\s*(?:\\(|,|$|magic item|item|\\.|rarity)`).test(s)
+    // Not the language ("can speak Common", "knows Common and Elvish").
+    const rarity = RARITY_WORDS.find(([w]) => new RegExp(`(?<![a-z])(?<!(?:speaks?|speaking|knows?|understands?|reads?|writes?|in|and|or) )${w}(?![a-z])\\s*(?:\\(|,|$|magic item|item|\\.|rarity)`).test(s)
       || new RegExp(`rarity[^a-z]+(?:is\\s+)?${w}(?![a-z])`).test(s));
-    if ( rarity && tier === 1 && !/\bcast|resist|advantage\b/.test(s) ) add(`Rarity: ${cap(rarity[0])}`, null, { rarity: rarity[1] });
+    if ( rarity && tier === 1 && !/\bcast\b/.test(s) ) add(`Rarity: ${cap(rarity[0])}`, null, { rarity: rarity[1] });
     else if ( rarity && tier > 1 && /\b(?:becomes?|is now|rarity)\b/.test(s) ) add(`Tier ${tier} rarity: ${cap(rarity[0])}`, null, { tierRarity: { tier, rarity: rarity[1] } });
 
     // --- "Origin Feat named Martial Savant", "General feat (requires level 4)" ---
-    const featMatch = tier === 1 && category !== "background" && !/^(?:an? )?(?:origin |general )?feat\s*:/.test(s) && s.match(/^(?:an? |this is an? |this )?(origin|general|epic boon|fighting style)?\s*(?:feat|feature)\b(?! of your choice)/);
+    const featMatch = tier === 1 && category !== "background" && !(/^(?:an? )?(?:origin |general )?feat\s*:/.test(s) && original !== firstText) && s.match(/^(?:an? |this is an? |this )?(origin|general|epic boon|fighting style)?\s*(?:feat|feature)\b(?! of your choice)/);
     const featLine = featMatch && !/\b(?:gain|gains|adds?|grants?|gives?|lets?|choose|choice)\b/.test(s.split(/\b(?:named|called)\b/)[0]) ? featMatch : null;
     if ( featLine ) {
+      // "Origin feat: Quick Hands." names the feat.
+      const titled2 = original.match(/^(?:an? )?(?:origin |general |epic boon |fighting style )?feat\s*:\s*([A-Z][^.;:]*?)\s*(?:[.;]|$)/i);
+      if ( titled2 && ![...findings, ...found].some(f => f.basics?.name) ) add(`Name: ${titled2[1]}`, null, { name: titled2[1] });
       const featType = { origin: "origin", general: "general", "epic boon": "epicBoon", "fighting style": "fightingStyle" }[featLine[1] ?? ""] ?? "";
       category = "feat";
       add(`Category: ${featType ? featLine[1].split(" ").map(cap).join(" ") + " " : ""}Feat`, null, { category: "feat", ...(featType ? { featType } : {}) });
@@ -331,12 +382,12 @@ export function parseDescription(text, ctx={}) {
         const picks = T.abilities.filter(([, l]) => new RegExp(`(?<![a-z])${reEsc(l)}(?![a-z])`).test(m[1])).map(([k]) => k).slice(0, 3);
         if ( picks.length ) { add(`Ability scores: ${picks.map(k => cap(T.abilities.find(([a]) => a === k)[1])).join(", ")}`, null, { bgAbilities: picks }); bgHit = true; }
       }
-      if ( /skill proficienc|proficien(?:cy|t) in/.test(s) ) {
+      if ( /skill proficienc|proficien(?:cy|t) in|\bskills?:/.test(s) ) {
         const sk = skillsIn(s.replace(/tool proficienc[^.;]*/, ""), T).slice(0, 2);
         if ( sk.length ) { add(`Skill proficiencies: ${sk.map(k => titled(T.skills.find(([a]) => a === k)[1])).join(", ")}`, null, { bgSkills: sk }); bgHit = true; }
       }
-      if ( (m = s.match(/tool proficienc(?:y|ies):?\s*([^.;]+)|proficien(?:cy|t) with (?:an? |the )?([^.;]+)/)) ) {
-        const phrase = (m[1] ?? m[2]).replace(/[’]/g, "'");
+      if ( (m = s.match(/tool proficienc(?:y|ies):?\s*([^.;]+)|proficien(?:cy|t) with (?:an? |the )?([^.;]+)|\btools?:\s*([^.;]+)/)) ) {
+        const phrase = (m[1] ?? m[2] ?? m[3]).replace(/[’]/g, "'");
         const tools = (ctx.tools ?? []).filter(t => !t.key.endsWith(":*"));
         const groups = (ctx.tools ?? []).filter(t => t.key.endsWith(":*"));
         const choice = /\b(?:one kind of|any|of your choice|choose|a type of)\b/.test(phrase);
@@ -369,7 +420,8 @@ export function parseDescription(text, ctx={}) {
     }
 
     const typed = s.match(/\b(weapon|armor|armour|shield)\s*\(([^)]+)\)/);
-    const enh = s.match(/\+\s*([1-3])\s+([a-z' -]+)/);
+    // "+1 longsword" — not "damage from a +3 weapon" or "immune to +1 weapons", which only mention one.
+    const enh = s.match(/(?<!\b(?:from|by|against|to|than|into|with) (?:an? )?)\+\s*([1-3])\s+([a-z' -]+)/);
     const named = original.match(/\b(?:named|called|known as)\s+["“']?([A-Z][\w'’-]*(?:\s+(?:of|the|and|[A-Z][\w'’-]*))*)/);
     if ( named && tier === 1 && !findings.some(f => f.basics?.name) ) {
       const nm = named[1].replace(/\s+(?:of|the|and)$/i, "");
@@ -378,18 +430,20 @@ export function parseDescription(text, ctx={}) {
     const baseKnown = () => [...findings, ...found].some(f => f.basics?.baseUuid);
     // "Greataxe named Sun Cleaver" / "A flaming longsword": the base item named at the start of the description.
     // Otherwise the first base item mentioned anywhere (tier 1), ignoring comparisons such as "like a dagger".
-    const plain = s.replace(/\b(?:like|as|than|resembl\w*|shaped like)\s+(?:an?|the)\s+[a-z' -]+?(?=[,.;]|$)/g, " ");
+    const plain = s.replace(/\b(?:like|as|than|resembl\w*|shaped like)\s+(?:an?|the)\s+[a-z' -]+?(?=[,.;]|$)/g, " ").replace(/\bexcept [a-z' ,-]+/g, " ");
     const anyBase = tier === 1 && !baseKnown() && !["equipment", "consumable"].includes(inferred?.cat) ? findBase(plain) : null;
     // "+1 longsword" / "+2 magic dagger": the base item right after the bonus, not one mentioned later.
     const enhBase = enh ? findBase(enh[2]) : null;
-    const base = typed ? findBase(typed[2]) : (enhBase && enhBase.at <= 12 ? enhBase : null) ?? anyBase;
+    const base = typed ? findBase(typed[2].replace(/\bexcept\b.*/, "")) : (enhBase && enhBase.at <= 12 ? enhBase : null) ?? anyBase;
     if ( base ) {
       const cat = base.kind === "weapon" ? "weapon" : "armor";
       category = cat;
       add(`Base item: ${base.e.name}`, null, { category: cat, baseUuid: base.e.uuid, ...(cat === "armor" ? { armorType: base.kind === "shield" ? "shield" : (base.e.armorType || "") } : {}) });
     }
     // "Battle axe +1." — a bare +N right after (or before) the base item.
-    const bare = !enh && base && !found.some(f => f.basics?.enhancementBonus) ? s.match(/\+\s*([1-3])\s*(?=[.,;!)]|$)/) : null;
+    // …or a sentence that is just "+1." after the title named the base ("Rapier of Wounding. +1.").
+    const bare = !enh && !found.some(f => f.basics?.enhancementBonus) && ![...findings].some(f => f.basics?.enhancementBonus)
+      ? (base ? s.match(/\+\s*([1-3])\s*(?=[.,;!)]|$)/) : baseKnown() ? (s.match(/^\+\s*([1-3])\s*(?=[.,;!)]|$)/) ?? (findBase(s)?.at === 0 ? s.match(/^[a-z' -]+,?\s*\+\s*([1-3])\s*(?=[.,;!)]|$)/) : null)) : null) : null;
     if ( bare ) add(`+${bare[1]} enhancement bonus`, null, { enhancementBonus: bare[1] });
     if ( enh && (base || /^(?:magic(?:al)? )?(?:weapon|armor|armour|shield)\b/.test(enh[2].trim())) ) {
       if ( !base && !baseKnown() ) {
@@ -400,6 +454,10 @@ export function parseDescription(text, ctx={}) {
       add(`+${enh[1]} enhancement bonus`, null, { enhancementBonus: enh[1] });
     }
 
+    // "If your attunement to the stone ends…", "while you are attuned to it": the item needs attunement.
+    if ( !/requires? attunement/.test(s) && tier === 1 && /\byour attunement to (?:this|the|an?|it)\b|\bwhile (?:you are |you're )?attuned to (?:it|this|the)\b|\bonce (?:you are |you're )?attuned\b|\bwhen you attune to (?:it|this|the)\b/.test(s)
+      && ![...findings, ...found].some(f => f.basics?.attunement) ) add("Requires attunement", null, { attunement: "required" });
+    if ( /\battunement (?:is )?required\b|\bmust be attuned\b|\bneeds? attunement\b/.test(s) && ![...findings, ...found].some(f => f.basics?.attunement) ) add("Requires attunement", null, { attunement: "required" });
     if ( /requires? attunement/.test(s) ) {
       add("Requires attunement", null, { attunement: "required" });
       const by = s.match(/requires? attunement by (?:an? )?([^)\].;]+)/);
@@ -474,26 +532,44 @@ export function parseDescription(text, ctx={}) {
     }
 
     // --- Spells ---
-    // The item casts it ("you can cast", "casts", "scroll of"), not a spell merely mentioned
-    // ("the curse ends if Remove Curse is cast on you", "an Identify spell reveals…").
-    const castWord = (/\bcasts?\b|\bcasting\b|\bcantrip\b|\bknow the\b|\bscroll of\b|\bspell scroll\b|\bspells? (?:from|stored)\b/.test(s)
-      || /\b(?:grants?|gives?|has|have) (?:the (?:effects?|benefits?) of )?(?:the |an? )?[a-z' ]+ spell\b/.test(s))
-      && !/\b(?:is|are|was|been|be|being) cast\b|\bcast (?:on|upon|targeting) (?:you|it|them|the (?:item|wearer|wielder|armor|weapon))\b|\bunless\b[^.;]*\bcast\b/.test(s);
-    if ( (castWord || usesIn(s, T)) && (ctx.spells ?? []).length ) {
-      let rest = s;
-      const spells = [];
-      for ( const sp of [...ctx.spells].sort((a, b) => b.name.length - a.name.length) ) {
-        const n = String(sp.name).toLowerCase();
-        if ( n.length < 3 || (!castWord && (n.length < 7 || !n.includes(" "))) ) continue;
-        const re = new RegExp(`(?<![a-z])${reEsc(n)}(?![a-z])`);
-        if ( re.test(rest) ) { spells.push(sp); rest = rest.replace(re, " "); }
+    // A spell counts when the item's user casts it: it comes after "cast" / "casts" / "scroll of" /
+    // "know the … cantrip", not before it ("this magic weapon…") and not passively ("a Light spell
+    // cast on the robe", "is cast on you", "unless … cast").
+    if ( (ctx.spells ?? []).length ) {
+      let from = -1;
+      for ( const cm of s.matchAll(/\b(?:cast|casts|casting|know(?:s)? the|scroll of|spell scroll|cantrips?:|spells?:)\b/g) ) {
+        const before = s.slice(Math.max(0, cm.index - 30), cm.index), after = s.slice(cm.index);
+        if ( /\b(?:is|are|was|were|been|be|being|spells?)\s+$/.test(before) && /^cast\b/.test(after) ) continue;
+        if ( /^cast (?:on|upon|within|at|into|targeting) /.test(after) ) continue;
+        if ( /^casting of\b/.test(after) ) continue;   // "each casting of Wish causes the tower to…"
+        if ( /\bunless\b[^.;]*$/.test(s.slice(0, cm.index)) ) continue;
+        from = cm.index; break;
       }
-      const u = usesIn(s, T);
-      const lvl = s.match(/(?:at|as an?) (\d)(?:st|nd|rd|th)[- ]level/);
-      for ( const sp of spells ) {
-        add(`Spell: ${sp.name}${usesNote(u)}`,
-          { type: "spell", name: sp.name, spellUuid: sp.uuid, ...(lvl ? { level: lvl[1] } : {}), ...(u ?? {}) });
+      // "grants the effects of the Haste spell" (potions)
+      const effectOf = s.match(/\b(?:effects?|benefits?) of (?:the |an? )?|\bas (?:a|an) level \d+ (?=[a-z])/);
+      if ( from < 0 && effectOf ) from = effectOf.index;
+      const u0 = usesIn(s, T);
+      const loose = from < 0 && u0;               // "Cure Wounds 2/day": long, multi-word names only
+      if ( from >= 0 || loose ) {
+        let rest = s.slice(Math.max(0, from));
+        const spells = [];
+        for ( const sp of spellList ) {
+          const n = String(sp.name).toLowerCase();
+          if ( n.length < 3 || (loose && (n.length < 7 || !n.includes(" "))) ) continue;
+          // Without "cast", the name must be followed by its uses: "Cure Wounds 2/day", "Fly once per day".
+          const re = loose ? new RegExp(`(?<![a-z])${reEsc(n)}(?![a-z])(?=\\s*(?:\\d+\\s*\\/|once|twice|thrice|\\d+ times|at will|\\(\\d))`)
+            : new RegExp(`(?<![a-z])${reEsc(n)}(?![a-z])(?:\\s*\\((?:level|lvl\\.?)\\s*(\\d)[^)]*\\))?`);
+          const hit = rest.match(re);
+          if ( hit ) { spells.push([sp, hit[1]]); rest = rest.replace(re, " "); }
+        }
+        const lvl = s.match(/(?:at|as an?) (\d)(?:st|nd|rd|th)[- ]level/);
+        for ( const [sp, lv] of spells ) {
+          add(`Spell: ${sp.name}${usesNote(u0)}`,
+            { type: "spell", name: sp.name, spellUuid: sp.uuid, ...((lv || lvl) ? { level: lv || lvl[1] } : {}), ...(u0 ?? {}) });
+        }
       }
+      // "…cast one of the spells on the following table": the rows that follow are spell names.
+      if ( /\b(?:cast|casting)\b[^.;]*\b(?:following table|table below|following spells|spells? (?:listed )?below|as shown in the [^.;]*table)\b|\bone of the following spells\b/.test(s) ) spellTable = { tier };
     }
 
     // --- Fighting Style ---
@@ -545,7 +621,14 @@ export function parseDescription(text, ctx={}) {
     }
 
     // --- Senses ---
-    for ( const sense of SENSES ) {
+    // "Darkvision and Truesight, both with a range of 120 feet"
+    const senseAlt = SENSES.join("|");
+    const remote = /\bsensor\b|\bscrying\b/.test(s);   // sight through a scrying sensor isn't the wearer's
+    const senseList = s.match(new RegExp(`\\b((?:${senseAlt})(?:(?:,| and|, and) (?:${senseAlt}))+),? (?:both |each |all )?(?:with a range of|out to|to a range of|to|of) (\\d+)`));
+    if ( senseList && !remote ) for ( const sense of SENSES.filter(x => new RegExp(`\\b${x}\\b`).test(senseList[1])) ) {
+      add(`${cap(sense)} ${senseList[2]} ft.`, { type: "sense", name: cap(sense), sense, mode: "upgrade", value: senseList[2] });
+    }
+    if ( !senseList && !remote ) for ( const sense of SENSES ) {
       if ( (m = s.match(new RegExp(`${sense}(?: out)?(?: to)?(?: a range of)?(?: with a range of)? (\\d+)`))) || (m = s.match(new RegExp(`(\\d+) feet (?:of )?${sense}`))) ) {
         const more = new RegExp(`${sense}[^.;]*(?:increases?|extends?|additional|more)|(?:increases?|extends?) (?:your |its )?(?:range of )?${sense}`).test(s);
         add(`${cap(sense)} ${more ? "+" : ""}${m[1]} ft.`, { type: "sense", name: cap(sense), sense, mode: more ? "add" : "upgrade", value: m[1] });
@@ -571,8 +654,18 @@ export function parseDescription(text, ctx={}) {
         const label = MOVE_LABELS[t];
         add(`${label} speed ${m[2]} ft.`, { type: "movement", name: `${label} Speed`, movementType: t, mode: "override", value: m[2] });
       }
+      const eqRe = /\b(fly|flying|swim|swimming|climb|climbing|burrow|burrowing) speed(?=[^.;]*?\bequal to your (?:walking )?speed)/g;
+      if ( /\bequal to your (?:walking )?speed/.test(s) && !requirementSentence ) while ( (m = eqRe.exec(s)) ) {
+        const t = MOVE_WORDS[m[1]]; if ( seen.has(t) ) continue; seen.add(t);
+        add(`${MOVE_LABELS[t]} speed equal to your walking speed`, { type: "movement", name: `${MOVE_LABELS[t]} Speed`, movementType: t, mode: "equal", value: "" });
+      }
+      if ( (m = s.match(/\b(?:your )?speed becomes (\d+) feet(?: unless your speed is (?:already )?higher)?/)) && !requirementSentence && !seen.has("walk") ) {
+        seen.add("walk");
+        add(`Walking speed ${m[0].includes("unless") ? "at least" : "becomes"} ${m[1]} ft.`, { type: "movement", name: "Speed", movementType: "walk", mode: m[0].includes("unless") ? "atLeast" : "override", value: m[1] });
+      }
       const inc = s.match(/(?:(walking|flying|swimming|climbing|burrowing) )?speed (?:increases|is increased|improves) by (\d+)|\+\s*(\d+) feet to (?:your )?(?:(walking|flying|swimming|climbing) )?speed|(\d+) (?:extra|additional) feet of (?:(walking|flying|swimming|climbing) )?(?:movement|speed)/);
-      if ( (m = s.match(/\b(fly|swim|climb|burrow)\s+(?:at\s+|up to\s+|with a speed of\s+)?(\d+) feet/)) && !seen.has(MOVE_WORDS[m[1]]) ) {
+      // "you can fly 60 feet" — the wearer moving, not the weapon or a creature it makes ("the sword flies up to 30 feet").
+      if ( (m = s.match(/\b(?:you|wearer|wielder|user)(?: can| may| could)?(?: also)? (fly|swim|climb|burrow)\s+(?:at\s+|up to\s+|with a speed of\s+)?(\d+) feet/)) && !seen.has(MOVE_WORDS[m[1]]) ) {
         const t = MOVE_WORDS[m[1]]; seen.add(t);
         add(`${MOVE_LABELS[t]} speed ${m[2]} ft.`, { type: "movement", name: `${MOVE_LABELS[t]} Speed`, movementType: t, mode: "override", value: m[2] });
       }
@@ -614,7 +707,7 @@ export function parseDescription(text, ctx={}) {
         if ( (m = s.match(new RegExp(`^(?:your )?${L}(?: score)?:? (\\d{2})\\b(?! or)(?![^.;]*\\b(?:or higher|at least|minimum|required)\\b)|${L} (?:score )?(?:is|becomes|changes to|is set to|equals) (\\d+)|(?:sets? |set )(?:your )?${L}(?: score)? to (\\d+)|your ${L}(?: score)? to (\\d+)|${L} (?:score )?of (\\d+)(?! or)`))) ) {
           const v = m[1] ?? m[2] ?? m[3] ?? m[4] ?? m[5];
           add(`${cap(l)} becomes ${v}`, { type: "ability", name: `${cap(l)} ${v}`, ability: k, mode: "override", value: v });
-        } else if ( (m = s.match(new RegExp(`${L}(?: score)? increases by (\\d+)|increases? (?:your )?${L}(?: score)? by (\\d+)|\\+\\s*(\\d+) (?:bonus )?(?:to )?(?:your )?${L}(?! saving| check)|(?<![a-z])${L}(?: score)? \\+\\s*(\\d+)`))) ) {
+        } else if ( (m = s.match(new RegExp(`${L}(?: score)? increases by (\\d+)|increases? (?:your )?${L}(?: score)? by (\\d+)|\\+\\s*(\\d+) (?:bonus )?(?:to )?(?:your )?${L}(?! saving| check| \\()|(?<![a-z])${L}(?: score)? \\+\\s*(\\d+)`))) ) {
           const v = m[1] ?? m[2] ?? m[3] ?? m[4];
           add(`${cap(l)} +${v}`, { type: "ability", name: `${cap(l)} +${v}`, ability: k, mode: "add", value: v });
         }
@@ -701,7 +794,10 @@ export function parseDescription(text, ctx={}) {
     const acM = s.match(/\+\s*(\d+)\s*(?:bonus )?(?:to )?(?:your |the )?(?:ac|armor class)(?![a-z])|(?:ac|armor class) (?:increases|is increased) by (\d+)|bonus to (?:your )?(?:ac|armor class) (?:of|equal to) \+?(\d+)|(?<![a-z])(?:ac|armor class)\s*\+\s*(\d+)/);
     if ( acM && !requirementSentence ) {
       const v = acM[1] ?? acM[2] ?? acM[3] ?? acM[4];
-      if ( category === "armor" && !found.some(f => f.basics?.enhancementBonus) && Number(v) <= 3 ) add(`+${v} armor enhancement`, null, { enhancementBonus: v });
+      // "+2 to AC against ranged attack rolls" applies only to those attacks: a rule, not the armor's bonus.
+      const vs = s.slice(acM.index).match(/^[^.;]*?\bagainst (?:all )?(ranged|melee)(?: weapon)? attacks?/)?.[1];
+      if ( vs ) add(`+${v} AC against ${vs} attacks`, { type: "defensive", effect: "acBonus", name: `+${v} AC vs ${cap(vs)}`, formula: v, trigger: vs });
+      else if ( category === "armor" && !found.some(f => f.basics?.enhancementBonus) && Number(v) <= 3 ) add(`+${v} armor enhancement`, null, { enhancementBonus: v });
       else if ( category !== "armor" ) add(`+${v} AC`, { type: "defensive", effect: "acBonus", name: `+${v} AC`, formula: v, trigger: "struck" });
     }
     const saveM = s.match(/\+\s*(\d+)\s*(?:bonus )?(?:to |on )?(?:all )?(?:your )?(?:(\w+) )?(?:saving throws|saves(?![a-z]))|(?:ac|armor class) and (?:saving throws|saves(?![a-z]))/);
@@ -751,6 +847,7 @@ export function parseDescription(text, ctx={}) {
         const cm = s.match(new RegExp(`\\+\\s*(\\d+)\\s*(?:bonus )?(?:to |on )?(?:your )?${reEsc(l)} (?:ability )?checks?`));
         if ( cm ) ae(`+${cm[1]} to ${cap(l)} checks`, `${cap(l)} Checks +${cm[1]}`, `system.abilities.${k}.bonuses.check`, cm[1]);
       }
+      if ( (m = s.match(/\+\s*(\d+)\s*(?:bonus )?(?:to |on )(?:all )?(?:your )?ability checks\b/)) ) ae(`+${m[1]} to ability checks`, `Ability Checks +${m[1]}`, "system.bonuses.abilities.check", m[1]);
       if ( (m = s.match(/\+\s*(\d+)\s*(?:bonus )?to (?:your )?damage rolls? (?:with|made with|for|using) (ranged|melee) weapons?/)) ) {
         const k = m[2] === "ranged" ? "rwak" : "mwak";
         ae(`+${m[1]} damage with ${m[2]} weapons`, `${cap(m[2])} Damage +${m[1]}`, `system.bonuses.${k}.damage`, m[1]);
@@ -810,12 +907,21 @@ export function parseDescription(text, ctx={}) {
     else if ( /ignores? half cover/.test(s) ) add("Ignores half cover", { type: "offensive", effect: "ignoreHalfCover", name: "Ignore Cover" });
 
     // --- Damage resistance, immunity, vulnerability ---
+    // An object's or creature's statistics ("The rope has AC 20, HP 20, and Immunity to Poison") are not the wearer's,
+    // and nor is what summoned spirits or a target have ("they have Immunity to the Charmed condition").
+    const otherHas = /\b(?:they|it|creatures?|spirits?|targets?|the (?:creature|spirit|target|summoned|construct|elemental|guardian|servant|beast|steed|mount|animal|golem|warrior)s?)\b(?: [a-z]+){0,3} (?:have|has|is|are|gains?)\b[^.]*\b(?:immun|resist|vulnerab)/.test(s)
+      && !/\byou\b(?: [a-z]+){0,3} (?:have|has|are|gain|become)/.test(s);
     const dmgRule = (re, effect, label, category="defensive") => {
+      if ( statBlock || (category === "defensive" && otherHas) ) return;
       const mm = s.match(re); if ( !mm ) return;
-      const types = /\ball (?:types of )?damage\b/.test(mm[0] + s.slice(mm.index + mm[0].length, mm.index + mm[0].length + 20)) ? ["any"] : damageRun(s, mm.index + mm[0].length, T);
+      let start = mm.index + mm[0].length;
+      // "Immunity to the Poisoned condition and Poison damage": the damage after the condition.
+      const cond = s.slice(start).match(/^(?:the )?[a-z]+(?:(?:,| or| and),? [a-z]+)* conditions? and (?:to )?/);
+      if ( cond ) start += cond[0].length;
+      const types = /\ball (?:types of )?damage\b/.test(mm[0] + s.slice(start, start + 20)) ? ["any"] : damageRun(s, start, T);
       for ( const t of types ) add(`${label} ${t === "any" ? "all damage" : `${t} damage`}`, { type: category, effect, name: `${label} ${t === "any" ? "All" : cap(t)}`.trim(), damageType: t, ...(category === "defensive" ? { trigger: "damage" } : {}) });
     };
-    if ( /ignores?/.test(s) ) {
+    if ( /ignores?[^.;]*\b(?:resistance|immunity)\b/.test(s) ) {
       dmgRule(/ignores? (?:a target's |the target's |any )?(?:resistance and immunity|immunity and resistance) to /, "ignoreResistanceImmunity", "Ignore resistance & immunity:", "offensive");
       if ( !found.some(f => f.component?.effect === "ignoreResistanceImmunity") ) {
         dmgRule(/ignores? (?:a target's |the target's |any )?resistance to /, "ignoreResistance", "Ignore resistance:", "offensive");
@@ -828,7 +934,7 @@ export function parseDescription(text, ctx={}) {
       if ( !found.some(f => DEFENSE_EFFECTS.has(f.component?.effect)) ) {
         dmgRule(/\bresists? /, "resistance", "Resistance:");
         const pre = s.match(/((?:[a-z]+(?:,? (?:and|or) |, ))*[a-z]+) (resistance|immunity|vulnerability)\b(?! to| against)/);
-        if ( pre ) {
+        if ( pre && !statBlock ) {
           const eff = pre[2] === "resistance" ? "resistance" : pre[2] === "immunity" ? "immunity" : "vulnerability";
           for ( const t of damageTypesIn(pre[1], T) ) add(`${cap(pre[2])}: ${t} damage`, { type: "defensive", effect: eff, name: `${cap(pre[2])}: ${cap(t)}`, damageType: t, trigger: "damage" });
         }
@@ -836,7 +942,7 @@ export function parseDescription(text, ctx={}) {
     }
 
     // --- Condition immunity ---
-    if ( /\bimmun(?:e|ity)\b|\bcan't be\b|\bcannot be\b/.test(s) ) {
+    if ( /\bimmun(?:e|ity)\b|\bcan't be\b|\bcannot be\b/.test(s) && !otherHas && !statBlock ) {
       for ( const [k, l] of T.conditions ) {
         if ( new RegExp(`(?:immun(?:e|ity) to (?:being |the )?|can't be |cannot be )[a-z, ]*(?<![a-z])${reEsc(l)}(?![a-z])`).test(s) ) {
           add(`Immune to ${l}`, { type: "utility", effect: "activeEffect", name: `Immune: ${cap(l)}`, activeEffectKey: "system.traits.ci.value", activeEffectMode: "2", activeEffectValue: k });

@@ -138,6 +138,8 @@ export function componentLine(c, { spellName, names={} }={}) {
   switch ( c.type ) {
     case "movement": {
       const m = moveWord(c.movementType);
+      if ( c.mode === "atLeast" ) return `Your ${m} speed is at least ${ft(c.value)}`;
+      if ( c.mode === "equal" ) return `You have a ${m} speed equal to your walking speed`;
       return c.mode === "override" ? `You have a ${m} speed of ${ft(c.value)}` : `Your ${m} speed increases by ${ft(c.value)}`;
     }
     case "sense": {

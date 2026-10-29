@@ -22,7 +22,7 @@ import {
   itemHasOwnUse, ruleFromComponent, sizeAfter, ruleHandling, syncRuleEffects
 } from "./rules.mjs";
 
-const MODULE_VERSION = "1.1.5";
+const MODULE_VERSION = "1.1.6";
 /** Returns every Fighting Style feat (cached), set up at init. */
 let fightingStyles = async () => [];
 /** Every feat (cached), set up at init. */
@@ -411,6 +411,9 @@ class ItemBuilder5e extends ApplicationV2 {
         if (!isMundaneBase(e)) continue;
 
         if (e.type === "weapon") {
+          // Monster attacks (Ram, Thunderbolt, Chain…) and natural weapons are not bases for a magic weapon.
+          const wType=String(foundry.utils.getProperty(e,"system.type.value")??"").toLowerCase();
+          if (["natural","siege"].includes(wType) || /monster/i.test(pack.collection ?? "")) continue;
           const props=foundry.utils.getProperty(e,"system.properties");
           const reach=Array.from(props instanceof Set?props:(Array.isArray(props)?props:Object.keys(props??{}).filter(k=>props[k]))).includes("rch");
           addPreferred("weapons", {...entry,reach}, pack, e);
@@ -1057,7 +1060,7 @@ class ItemBuilder5e extends ApplicationV2 {
 
   _component(c,i){
     let body="";
-    if(c.type==="movement")body=`<div class="grid2"><label>Movement Type<select name="c.${i}.movementType">${movementOptions(c.movementType)}</select></label><label>Operation<select name="c.${i}.mode"><option value="add" ${c.mode==="add"?"selected":""}>Increase by</option><option value="override" ${c.mode==="override"?"selected":""}>Grant / Set to</option></select></label><label>Feet<input type="number" name="c.${i}.value" value="${esc(c.value)}"></label>${this._activation(c,i)}</div>`;
+    if(c.type==="movement")body=`<div class="grid2"><label>Movement Type<select name="c.${i}.movementType">${movementOptions(c.movementType)}</select></label><label>Operation<select name="c.${i}.mode"><option value="add" ${c.mode==="add"?"selected":""}>Increase by</option><option value="override" ${c.mode==="override"?"selected":""}>Grant / Set to</option><option value="atLeast" ${c.mode==="atLeast"?"selected":""}>At Least (unless already higher)</option><option value="equal" ${c.mode==="equal"?"selected":""}>Equal to Walking Speed</option></select></label>${c.mode==="equal"?"":`<label>Feet<input type="number" name="c.${i}.value" value="${esc(c.value)}"></label>`}${this._activation(c,i)}</div>`;
     if(c.type==="sense")body=`<div class="grid2"><label>Sense<select name="c.${i}.sense">${selectOptions({darkvision:"Darkvision",blindsight:"Blindsight",tremorsense:"Tremorsense",truesight:"Truesight",devilsSight:"Devil's Sight"},c.sense,false)}</select></label><label>Operation<select name="c.${i}.mode"><option value="upgrade" ${c.mode==="upgrade"?"selected":""}>Grant / Minimum Range</option><option value="add" ${c.mode==="add"?"selected":""}>Increase Existing Range by</option><option value="override" ${c.mode==="override"?"selected":""}>Set Range to</option></select></label><label>Range (feet)<input type="number" min="0" name="c.${i}.value" value="${esc(c.value)}"></label>${this._activation(c,i)}</div>`;
     if(c.type==="ability")body=`<div class="grid2"><label>Ability<select name="c.${i}.ability">${abilityOptions(c.ability)}</select></label><label>Operation<select name="c.${i}.mode"><option value="add" ${c.mode==="add"?"selected":""}>Increase by</option><option value="override" ${c.mode==="override"?"selected":""}>Set Score to</option></select></label><label>Value<input type="number" name="c.${i}.value" value="${esc(c.value)}"></label>${this._activation(c,i)}</div>`;
     if(c.type==="halfAsi"){
@@ -1285,7 +1288,8 @@ class ItemBuilder5e extends ApplicationV2 {
 
   _previewText(c){
     const tier=this.builderData.tiers[(Number(c.tier)||1)-1]?.name??`Tier ${c.tier}`;
-    if(c.type==="movement")return `${tier}: ${c.mode==="add"?"+":"Set"} ${esc(c.value)} ft. ${esc(loc(cfg("movementTypes",{})[c.movementType],c.movementType))}.`;
+    if(c.type==="movement"&&c.mode==="equal")return `${tier}: ${esc(loc(cfg("movementTypes",{})[c.movementType],c.movementType))} equal to walking speed.`;
+    if(c.type==="movement")return `${tier}: ${c.mode==="add"?"+":c.mode==="atLeast"?"At least":"Set"} ${esc(c.value)} ft. ${esc(loc(cfg("movementTypes",{})[c.movementType],c.movementType))}.`;
     if(c.type==="sense")return `${tier}: ${c.mode==="add"?"+":""}${esc(c.value)} ft. ${esc({darkvision:"Darkvision",blindsight:"Blindsight",tremorsense:"Tremorsense",truesight:"Truesight",devilsSight:"Devil's Sight"}[c.sense]??c.sense)}.`;
     if(c.type==="ability")return `${tier}: ${c.mode==="add"?"+":"Set"} ${esc(c.value)} ${esc(loc(cfg("abilities",{})[c.ability],c.ability))}.`;
     if(c.type==="spell"){const s=this.catalog.spells.find(x=>x.uuid===c.spellUuid)??resolveUuidSync(c.spellUuid);return `${tier}: grants ${esc(s?.name??"no spell selected")}.`}
@@ -1341,6 +1345,7 @@ class ItemBuilder5e extends ApplicationV2 {
       return `${tier} — ${c.name||effect}: ${effect}${details.length?` (${details.join("; ")})`:""} [${handlingLabel(c,this._nativeItemType(),{ownUse:this._ownUse()})}]`;
     }
     if(c.type==="reference")return `${tier} — ${c.name||"Special Rule"}: ${c.text||"No rules text entered"}`;
+    if(c.type==="movement"&&c.mode==="equal")return `${tier} — ${c.name}: ${c.movementType} movement equal to walking speed`;
     if(c.type==="movement")return `${tier} — ${c.name}: ${c.mode==="override"?"set":"increase"} ${c.movementType} movement ${c.mode==="override"?"to":"by"} ${c.value} feet`;
     if(c.type==="sense")return `${tier} — ${c.name}: ${c.mode==="add"?"increase":"grant/set"} ${c.sense} ${c.value} feet`;
     if(c.type==="ability")return `${tier} — ${c.name}: ${c.mode==="override"?"set":"increase"} ${loc(cfg("abilities",{})[c.ability],c.ability)} ${c.mode==="override"?"to":"by"} ${c.value}`;
@@ -1360,7 +1365,8 @@ class ItemBuilder5e extends ApplicationV2 {
     const changes=[];
 
     if(c.type==="movement"){
-      changes.push({key:movementKey(c.movementType),type:c.mode==="override"?"override":"add",value:String(c.value),priority:20});
+      if(c.mode==="equal")changes.push({key:movementKey(c.movementType),type:"upgrade",value:"@attributes.movement.walk",priority:20});
+      else changes.push({key:movementKey(c.movementType),type:c.mode==="override"?"override":c.mode==="atLeast"?"upgrade":"add",value:String(c.value),priority:20});
     } else if(c.type==="sense"){
       if(c.sense==="devilsSight"){
         // D&D5e has no Devil's Sight sense: it is darkvision that also works in magical darkness, noted under Special senses.
