@@ -2,6 +2,16 @@
 
 All notable changes to Item Builder 5e.
 
+## v1.1.9 Conditions on every rule
+
+- **Has a Condition**: every Offensive, Defensive, Healing and Utility rule card has two new lists under **Only when…**: conditions the item's user must have, and conditions the other creature must have. Any D&D5e condition (Prone, Frightened, Grappled, Restrained, Invisible, Poisoned…) is offered, plus Bloodied (at or below half hit points), Concentrating and Raging. Checking several means any one of them is enough. Examples:
+  - Offensive: an extra 1d6 damage against a prone target; advantage on attacks against frightened or grappled creatures; +2 to attack rolls while you are raging.
+  - Defensive: resistance to all damage while bloodied; +2 AC against invisible attackers; advantage on saves against spells while concentrating.
+  - Utility: +10 ft. speed while raging; advantage on Stealth checks while invisible.
+- Built-in effects (speed, Active Effects, conditions you gain) that depend only on your own condition are switched on and off by Item Builder as the condition comes and goes, without changing the item. Everything else is checked when the roll or damage happens, and is also written into Midi-QOL's own conditions when Midi-QOL is installed (Raging is handled by Item Builder only, because it has no roll-data form).
+- Describe It reads "while you are raging", "while bloodied", "against a prone target", "if the target is grappled or restrained", "against frightened creatures" and similar wording, and puts each condition on the right side of the rule. A speed bonus "while raging" becomes a switchable rule.
+- The item description says it the way players read it: "Deals an extra 1d6 fire damage, only against a target that is prone." "Resistance to all damage, only while you are bloodied."
+
 ## v1.1.8 Spells and effects from creatures, done right
 
 - "Advantage on saving throws against spells and effects from" any creature types (all 14, in any mix) now becomes advantage on saves against **spells and magical effects** from those creatures, which is the builder's "Only Saves Against Spells and Magical Effects" rule with the creatures filled in. v1.1.7 set it to "Any Saving Throw", which also covered their non-magical attacks, such as a poison bite. The rule is named after the creatures ("Magic Resistance vs Aberrations and Monstrosities").
