@@ -2,6 +2,12 @@
 
 All notable changes to Item Builder 5e.
 
+## v1.1.8 Spells and effects from creatures, done right
+
+- "Advantage on saving throws against spells and effects from" any creature types (all 14, in any mix) now becomes advantage on saves against **spells and magical effects** from those creatures, which is the builder's "Only Saves Against Spells and Magical Effects" rule with the creatures filled in. v1.1.7 set it to "Any Saving Throw", which also covered their non-magical attacks, such as a poison bite. The rule is named after the creatures ("Magic Resistance vs Aberrations and Monstrosities").
+- A creature's feature now counts as a magical effect when its text calls it magic (for example "magical eye rays"), since monster features rarely carry D&D5e's Magical property.
+- The builder's preview spells out each rule the way players will read it ("Advantage on saving throws against spells and magical effects, only from aberrations or monstrosities") instead of just "Defensive Effect — Saving Throw Advantage".
+
 ## v1.1.7 Describe It: spells and effects from creatures
 
 - "Advantage on saving throws against spells and effects from" one or more creature types now gives advantage on every save those creatures cause (their spells, plus breath weapons, gaze attacks, Mind Blast and the like). It used to cover only their spells. This works for all 14 creature types (aberrations, beasts, celestials, constructs, dragons, elementals, fey, fiends, giants, humanoids, monstrosities, oozes, plants and undead), any mix of them, and wording such as "the spells and abilities of fiends". "Spells and effects" with no creatures named becomes advantage against spells and magical effects.
