@@ -86,7 +86,8 @@ export function actorHasStatus(actor, id) {
     if ( max > 0 ) return Number(hp?.value) > 0 && Number(hp?.value) <= max / 2;
   }
   const effects = effectsOf(actor).filter(e => !e.disabled);
-  if ( id === "raging" && effects.some(e => /^rage\b|\braging\b/i.test(String(e.name ?? ""))) ) return true;
+  // Raging: D&D5e's Rage effect is named "Rage"; names such as "Rage Strength Check Bonus" are not it.
+  if ( id === "raging" && effects.some(e => /^\s*(?:rage|raging)\s*(?:\([^)]*\))?\s*$/i.test(String(e.name ?? "")) || e.statuses?.has?.("rage")) ) return true;
   if ( effects.some(e => e.statuses?.has?.(id)) ) return true;
   return !!actor.statuses?.has?.(id);
 }
@@ -1275,6 +1276,19 @@ function getterOf(proto, name) {
   return null;
 }
 
+const HP_RECHECK = new Set();
+function recheckWhenHpKnown(actor) {
+  const key = actor?.uuid ?? actor?.id;
+  if ( !key || HP_MAX.has(key) || HP_RECHECK.has(key) ) return;
+  HP_RECHECK.add(key);
+  setTimeout(() => {
+    if ( !(hpMax(actor) > 0) ) return;
+    actor.reset?.();
+    for ( const app of Object.values(actor.apps ?? {}) ) app?.render?.(false);
+    if ( actor.sheet?.rendered ) actor.sheet.render(false);
+  }, 0);
+}
+
 /** Does this actor own a status-gated effect? */
 function hasGatedEffects(actor) {
   return effectsOf(actor).some(e => e.flags?.[MODULE_ID]?.userStatuses?.length)
@@ -1298,6 +1312,9 @@ function registerStatusGates() {
       if ( !need?.length ) return false;
       const actor = this.parent?.documentName === "Item" ? this.parent.actor : this.parent?.documentName === "Actor" ? this.parent : null;
       if ( !actor ) return false;
+      // Bloodied needs the hit point maximum, which isn't worked out yet the first time a creature
+      // is prepared: check again once it is.
+      if ( need.includes("bloodied") ) recheckWhenHpKnown(actor);
       return !actorHasAnyStatus(actor, need);
     }
   });
