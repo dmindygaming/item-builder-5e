@@ -4,7 +4,7 @@ All notable changes to Item Builder 5e.
 
 ## v1.1.7 Describe It: spells and effects from creatures
 
-- "Advantage on saving throws against spells and effects from monstrosities and aberrations" now gives advantage on every save those creatures cause (spells, Mind Blast, gaze attacks and the like). It used to cover only their spells. The same goes for "spells and abilities of fiends" and similar wording. "Spells and effects" with no creatures named becomes advantage against spells and magical effects.
+- "Advantage on saving throws against spells and effects from" one or more creature types now gives advantage on every save those creatures cause (their spells, plus breath weapons, gaze attacks, Mind Blast and the like). It used to cover only their spells. This works for all 14 creature types (aberrations, beasts, celestials, constructs, dragons, elementals, fey, fiends, giants, humanoids, monstrosities, oozes, plants and undead), any mix of them, and wording such as "the spells and abilities of fiends". "Spells and effects" with no creatures named becomes advantage against spells and magical effects.
 - Unarmed Strike no longer appears in the base weapon list.
 
 ## v1.1.6 Describe It, closer to 100%
