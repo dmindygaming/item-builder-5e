@@ -778,8 +778,9 @@ export function parseDescription(text, ctx={}) {
               add(`Advantage on ${abName}saves against ${cName}${who ? ` (from ${who})` : ""}`, { type: "defensive", effect: "saveAdvantage", name: `Resist ${cName}`, trigger: "saveAgainstCondition", status: c, ability: ab, ...filter });
             }
           } else if ( kind === "advantage" && magic && who && /\bspells?,? (?:and|or) (?:other |their |its )?(?:effects|abilities|attacks|features|traits|powers)\b/.test(p) ) {
-            // "spells and effects from aberrations": every save those creatures cause, not only their spells.
-            add(`Advantage on ${abName}saves against spells and effects (from ${who})`, { type: "defensive", effect: "saveAdvantage", name: `Resist ${who}`, trigger: "damage", ability: ab, ...filter });
+            // "spells and effects from aberrations": their spells and their other magical effects.
+            const whoName = who.split(", ").map(cap).join(" and ").replace(/ and (?=.* and )/g, ", ");
+            add(`Advantage on ${abName}saves against spells and magical effects (from ${who})`, { type: "defensive", effect: "saveAdvantage", name: `Magic Resistance vs ${whoName}`, trigger: "saveAgainstMagic", ability: ab, ...filter });
           } else if ( kind === "advantage" && magic ) {
             const both = /magical effects|\bmagic(?:al)?\b|\bspells?,? (?:and|or) (?:other )?effects\b/.test(p);
             add(`Advantage on ${abName}saves against spells${both ? " and magic" : ""}${who ? ` (from ${who})` : ""}`, { type: "defensive", effect: "saveAdvantage", name: "Magic Resistance", trigger: both ? "saveAgainstMagic" : "saveAgainstSpell", ability: ab, ...filter });

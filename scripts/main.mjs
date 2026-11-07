@@ -22,7 +22,7 @@ import {
   itemHasOwnUse, ruleFromComponent, sizeAfter, ruleHandling, syncRuleEffects
 } from "./rules.mjs";
 
-const MODULE_VERSION = "1.1.7";
+const MODULE_VERSION = "1.1.8";
 /** Returns every Fighting Style feat (cached), set up at init. */
 let fightingStyles = async () => [];
 /** Every feat (cached), set up at init. */
@@ -1300,6 +1300,11 @@ class ItemBuilder5e extends ApplicationV2 {
     if(c.type==="skill"){const sk=cfg("skills",{})[c.skill];const training=String(c.proficiency)==="2"?"Expertise":"Proficiency";const abil=c.ability?` using ${loc(cfg("abilities",{})[c.ability],c.ability)}`:"";return `${tier}: ${training} in ${esc(loc(sk,c.skill))}${esc(abil)}.`}
     if(c.type==="halfAsi")return `${tier}: +1 ${c.selectionMode==="fixed"?esc(loc(cfg("abilities",{})[c.ability],c.ability)):c.selectedAbility?esc(loc(cfg("abilities",{})[c.selectedAbility],c.selectedAbility)):"ability score chosen by the player"} (maximum 20).`;
     if(c.type==="reference")return `${tier}: ${esc(c.name)} — ${esc(c.text||"No rules text entered")}`;
+    if(c.type==="conditional"){
+      // The rule as players will read it ("Advantage on saving throws against spells and magical effects, only from aberrations…").
+      let said="";try{said=ruleSentence(c,{player:true});}catch{}
+      if(said)return `${tier}: ${esc(said.replace(/\.$/,""))}. <span class="ib60-tag">${esc(handlingLabel(c,this._nativeItemType(),{ownUse:this._ownUse()}))}</span>`;
+    }
     if(c.type==="conditional")return `${tier}: ${esc(RULE_CATEGORIES[c.ruleCategory]?.label??"Rule Effect")} — ${esc(RULE_CATEGORIES[c.ruleCategory]?.effects?.[c.effect]??c.effect)}${FORMULA_RULES.has(c.effect)&&c.formula?` ${esc(c.formula)}`:""}${DAMAGE_RULES.has(c.effect)&&c.damageType&&c.damageType!=="any"?` (${esc(c.damageType)})`:""}. <span class="ib60-tag">${esc(handlingLabel(c,this._nativeItemType(),{ownUse:this._ownUse()}))}</span>`;
     return `${tier}: ${esc(c.name)}`;
   }

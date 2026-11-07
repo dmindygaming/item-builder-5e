@@ -412,7 +412,7 @@ const CASTER_TYPE = `(workflow ? raceOrType : (item ? details?.type?.value : "")
 const CASTER_ROOT = `(workflow ? target : (item ? ({ details: details, name: name }) : undefined))`;
 const SPELL_EXPR = `(workflow ? (workflow?.item?.type === "spell" || workflow?.activity?.type === "cast") : !!(item?.school))`;
 const ITEM_MAGIC = `!!(item?.properties?.has?.("mgc") || item?.properties?.includes?.("mgc"))`;
-const MAGIC_EXPR = `(${SPELL_EXPR} || (workflow ? !!workflow?.item?.system?.properties?.has?.("mgc") : ${ITEM_MAGIC}))`;
+const MAGIC_EXPR = `(${SPELL_EXPR} || (workflow ? (!!workflow?.item?.system?.properties?.has?.("mgc") || (workflow?.item?.type === "feat" && ("" + (workflow?.item?.system?.description?.value || "")).toLowerCase().includes("magic"))) : ${ITEM_MAGIC}))`;
 
 /**
  * Midi-QOL expression: does the save's source apply this condition? Checks the activity's first
@@ -1048,6 +1048,10 @@ export function isMagicalSource(item, activity) {
   if ( isSpellSource(item, activity) ) return true;
   if ( hasProp(item?.system?.properties, "mgc") ) return true;
   if ( hasProp(activity?.item?.system?.properties, "mgc") ) return true;
+  // A creature's feature whose text calls it magic ("shoots three magical eye rays"): monster
+  // features rarely carry the Magical property, but the rules treat them as magical effects.
+  const text = String(item?.system?.description?.value ?? "").replace(/<[^>]+>/g, " ");
+  if ( item?.actor && item.type === "feat" && /\bmagic(?:al)?\b|\bspell-like\b|\binnate(?:ly)?\b/i.test(text) ) return true;
   return false;
 }
 
