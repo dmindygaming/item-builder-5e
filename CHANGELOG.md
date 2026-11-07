@@ -2,6 +2,11 @@
 
 All notable changes to Item Builder 5e.
 
+## v1.1.7 Describe It: spells and effects from creatures
+
+- "Advantage on saving throws against spells and effects from monstrosities and aberrations" now gives advantage on every save those creatures cause (spells, Mind Blast, gaze attacks and the like). It used to cover only their spells. The same goes for "spells and abilities of fiends" and similar wording. "Spells and effects" with no creatures named becomes advantage against spells and magical effects.
+- Unarmed Strike no longer appears in the base weapon list.
+
 ## v1.1.6 Describe It, closer to 100%
 
 Describe It was scored again, this time feature by feature against an answer key taken from D&D5e's own SRD item data (rarity, attunement, base item, enhancement, spells, resistances, immunities, senses, movement, ability scores and bonuses), and against 100 new GM-style write-ups that were not used to tune it. Of the rules the SRD text states, it now finds 97% (up from about 80%); on the new write-ups it got 91 of 100 fully right before any fixes for them (the last 40, written after the other fixes, 38 of 40), and all 100 after.
