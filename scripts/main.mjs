@@ -22,7 +22,7 @@ import {
   itemHasOwnUse, ruleFromComponent, sizeAfter, ruleHandling, syncRuleEffects
 } from "./rules.mjs";
 
-const MODULE_VERSION = "1.1.6";
+const MODULE_VERSION = "1.1.7";
 /** Returns every Fighting Style feat (cached), set up at init. */
 let fightingStyles = async () => [];
 /** Every feat (cached), set up at init. */
@@ -413,7 +413,7 @@ class ItemBuilder5e extends ApplicationV2 {
         if (e.type === "weapon") {
           // Monster attacks (Ram, Thunderbolt, Chain…) and natural weapons are not bases for a magic weapon.
           const wType=String(foundry.utils.getProperty(e,"system.type.value")??"").toLowerCase();
-          if (["natural","siege"].includes(wType) || /monster/i.test(pack.collection ?? "")) continue;
+          if (["natural","siege"].includes(wType) || /monster/i.test(pack.collection ?? "") || /^unarmed strike$/i.test(e.name ?? "")) continue;
           const props=foundry.utils.getProperty(e,"system.properties");
           const reach=Array.from(props instanceof Set?props:(Array.isArray(props)?props:Object.keys(props??{}).filter(k=>props[k]))).includes("rch");
           addPreferred("weapons", {...entry,reach}, pack, e);
