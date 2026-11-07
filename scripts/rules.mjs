@@ -37,6 +37,66 @@ export const COVER_RULES = { ignoreHalfCover: "half", ignoreThreeQuartersCover: 
 export const DEFENSIVE_TRIGGERS = { damage: "When You Take Damage", struck: "When You Are Struck by an Attack", melee: "When Struck by a Melee Attack", ranged: "When Struck by a Ranged Attack", spell: "When Damaged by a Spell Attack", save: "When Damaged after a Saving Throw", saveAgainstSpell: "When Making a Save Against a Spell", saveAgainstMagic: "When Making a Save Against a Spell or Magical Effect", saveAgainstCondition: "When Making a Save Against a Condition" };
 /** Save triggers that restrict which saves a rule applies to. */
 export const SAVE_SOURCE_TRIGGERS = new Set(["saveAgainstSpell", "saveAgainstMagic", "saveAgainstCondition"]);
+
+/* -------------------------------------------- */
+/*  Conditions a creature currently has         */
+/* -------------------------------------------- */
+
+/** States that aren't D&D5e conditions but that rules often depend on. */
+export const EXTRA_STATUSES = { bloodied: "Bloodied", concentrating: "Concentrating", raging: "Raging" };
+
+/** Every condition a rule can check, as { key: label }: D&D5e's conditions plus Bloodied, Concentrating, Raging. */
+export function statusChoices() {
+  const out = {};
+  for ( const [k, v] of Object.entries(globalThis.CONFIG?.DND5E?.conditionTypes ?? {}) ) {
+    if ( v?.pseudo ) continue;
+    const label = v?.name ?? v?.label ?? k;
+    out[k] = globalThis.game?.i18n?.localize?.(label) ?? label;
+  }
+  for ( const [k, v] of Object.entries(EXTRA_STATUSES) ) out[k] ??= v;
+  return out;
+}
+
+/** Hit point maximum, remembered from the last finished preparation (it is blank while effects apply). */
+const HP_MAX = new Map();
+function hpMax(actor) {
+  const m = Number(actor?.system?.attributes?.hp?.max);
+  const key = actor?.uuid ?? actor?.id;
+  if ( m > 0 ) { if ( key ) HP_MAX.set(key, m); return m; }
+  return HP_MAX.get(key) ?? 0;
+}
+
+/** A creature's effects that could carry a condition (its own, plus its items' passive effects). */
+function effectsOf(actor) {
+  try { return actor?.allApplicableEffects ? [...actor.allApplicableEffects()] : [...(actor?.effects ?? [])]; }
+  catch { return [...(actor?.effects ?? [])]; }
+}
+
+/**
+ * Does this creature currently have the condition? Reads effects directly (not `actor.statuses`,
+ * which is still being filled in while effects are applied), so it is safe to call mid-preparation.
+ */
+export function actorHasStatus(actor, id) {
+  if ( !actor ) return false;
+  id = String(id ?? "").toLowerCase();
+  if ( !id ) return false;
+  if ( id === "bloodied" ) {
+    const hp = actor.system?.attributes?.hp;
+    const max = hpMax(actor);
+    if ( max > 0 ) return Number(hp?.value) > 0 && Number(hp?.value) <= max / 2;
+  }
+  const effects = effectsOf(actor).filter(e => !e.disabled);
+  if ( id === "raging" && effects.some(e => /^rage\b|\braging\b/i.test(String(e.name ?? ""))) ) return true;
+  if ( effects.some(e => e.statuses?.has?.(id)) ) return true;
+  return !!actor.statuses?.has?.(id);
+}
+
+/** Does the creature have any of these conditions? An empty list always matches. */
+export function actorHasAnyStatus(actor, ids) {
+  const list = (ids ?? []).map(x => String(x).toLowerCase()).filter(Boolean);
+  if ( !list.length ) return true;
+  return list.some(id => actorHasStatus(actor, id));
+}
 /** Creature sizes, smallest first. */
 export function sizeKeys() {
   const sizes = globalThis.CONFIG?.DND5E?.actorSizes ?? {};
@@ -99,7 +159,28 @@ const log = (...args) => { if ( debug() ) console.log(`${MODULE_ID} |`, ...args)
 /** Does the rule use any creature / activity filter? */
 export function hasConditions(c) {
   return !!((c.sourceTypes?.length) || (c.targetTypes?.length) || c.sourceSubtype || c.targetSubtype
-    || String(c.activityName ?? "").trim());
+    || (c.sourceStatuses?.length) || (c.targetStatuses?.length) || String(c.activityName ?? "").trim());
+}
+
+/** The item user's side of a rule ("source" or "target"), or null when neither side is the user. */
+export function userSide(c) {
+  if ( c.ruleCategory === "healing" ) return null;
+  const p = participantLabels(c);
+  if ( /item user|effect user/i.test(p.source) ) return "source";
+  if ( /item user|effect user/i.test(p.target) ) return "target";
+  return null;
+}
+
+/**
+ * The only filter is a condition on the item user ("+10 ft. speed while raging"). Built-in effects
+ * honour that: Item Builder switches them off while the user doesn't have the condition.
+ */
+export function onlyUserStatuses(c) {
+  const side = userSide(c);
+  if ( !side ) return false;
+  const other = side === "source" ? "target" : "source";
+  return !!c[`${side}Statuses`]?.length && !c[`${other}Statuses`]?.length && !c.sourceTypes?.length && !c.targetTypes?.length
+    && !c.sourceSubtype && !c.targetSubtype && !String(c.activityName ?? "").trim();
 }
 
 /**
@@ -170,13 +251,13 @@ export function ruleHandling(c, itemType="", { ownUse=defaultOwnUse(itemType) }=
     case "sizeChange":
       return { mode: "native", note: c.sizeMode === "set"
         ? "Built in: the item user's size is set while the item is active. Tokens on the map are resized by Item Builder."
-        : "Built in: the item user grows (or shrinks) while the item is active. Tokens on the map are resized by Item Builder.", ignoresConditions: conditional };
+        : "Built in: the item user grows (or shrinks) while the item is active. Tokens on the map are resized by Item Builder.", ignoresConditions: conditional && !onlyUserStatuses(c) };
     case "movementControl":
-      return { mode: "native", note: "Built in as a change to the item user's speed (use a negative number to reduce it).", ignoresConditions: conditional };
+      return { mode: "native", note: "Built in as a change to the item user's speed (use a negative number to reduce it).", ignoresConditions: conditional && !onlyUserStatuses(c) };
     case "statusEffect":
       return c.appliesTo === "target"
         ? { mode: "native", note: "Built in as an Apply Effect button on the item's attack, save and damage cards.", ignoresConditions: conditional }
-        : { mode: "native", note: "Built in: the item user has this condition while the item is active.", ignoresConditions: conditional };
+        : { mode: "native", note: "Built in: the item user has this condition while the item is active.", ignoresConditions: conditional && !onlyUserStatuses(c) };
     case "advantage":
     case "disadvantage": {
       const target = c.rollTarget || "attack";
@@ -184,13 +265,13 @@ export function ruleHandling(c, itemType="", { ownUse=defaultOwnUse(itemType) }=
         if ( !conditional && d6 ) return { mode: "native", note: `Built in as a dnd5e ${effect} rule on ${scope} attack rolls.` };
         return { mode: "runtime", note: conditional ? auto : `Applied automatically by Item Builder (dnd5e 5.3 has no built-in attack ${effect}).` };
       }
-      if ( ["initiative", "concentration"].includes(target) ) return { mode: "native", note: `Built in on the item user's ${ROLL_TARGETS[target].toLowerCase()} rolls.`, ignoresConditions: conditional };
+      if ( ["initiative", "concentration"].includes(target) ) return { mode: "native", note: `Built in on the item user's ${ROLL_TARGETS[target].toLowerCase()} rolls.`, ignoresConditions: conditional && !onlyUserStatuses(c) };
       if ( !conditional ) return { mode: "native", note: `Built in on the item user's ${ROLL_TARGETS[target].toLowerCase()}.` };
       return { mode: "runtime", note: auto };
     }
     case "activeEffect":
       return c.activeEffectKey
-        ? { mode: "native", note: "Built in as an Active Effect.", ignoresConditions: conditional }
+        ? { mode: "native", note: "Built in as an Active Effect.", ignoresConditions: conditional && !onlyUserStatuses(c) }
         : { mode: "reference", note: "Enter an Active Effect key to automate this." };
     default:
       return { mode: "reference", note: "Shown in the description." };
@@ -222,6 +303,8 @@ export function ruleFromComponent(c, itemType="", options={}) {
     sourceTypes: [...(c.sourceTypes ?? [])].map(x => String(x).toLowerCase()),
     sourceSubtype: c.sourceSubtype ?? "",
     targetSubtype: c.targetSubtype ?? "",
+    sourceStatuses: [...(c.sourceStatuses ?? [])].map(x => String(x).toLowerCase()),
+    targetStatuses: [...(c.targetStatuses ?? [])].map(x => String(x).toLowerCase()),
     activityName: c.activityName ?? "",
     targetTypes: [...(c.targetTypes ?? [])].map(x => String(x).toLowerCase()),
     damageTypes: (DEFENSIVE_DAMAGE_RULES.has(c.effect) || OFFENSIVE_DAMAGE_RULES.has(c.effect) || c.effect === "sameTypeDamage")
@@ -372,6 +455,8 @@ export function ruleEffectData(c, { itemName, itemType, activeTier, ownUse=defau
   if ( ruleHandling(c, itemType, { ownUse }).mode !== "native" ) return null;
   const minTier = Number(c.tier) || 1;
   const flags = { [MODULE_ID]: { componentId: c.id, minTier, activation: c.activation ?? "equipped", managed: true, ruleEffect: true } };
+  // "+10 ft. speed while raging": the built-in effect is switched off while the user lacks the condition.
+  if ( onlyUserStatuses(c) ) flags[MODULE_ID].userStatuses = [...c[`${userSide(c)}Statuses`]].map(x => String(x).toLowerCase());
 
   if ( c.effect === "statusEffect" ) {
     if ( !c.status ) return null;
@@ -435,17 +520,34 @@ function advantageRuleShape(c) {
   if ( !kind ) return null;
   if ( c.effect === "saveAdvantage" ) {
     // Defensive: source = creature causing the save, target = item user.
-    return { kind, roll: "save", ability: c.ability || "", other: { types: c.sourceTypes, subtype: c.sourceSubtype },
-      user: { types: c.targetTypes, subtype: c.targetSubtype }, trigger: c.trigger };
+    return { kind, roll: "save", ability: c.ability || "", other: { types: c.sourceTypes, subtype: c.sourceSubtype, statuses: c.sourceStatuses },
+      user: { types: c.targetTypes, subtype: c.targetSubtype, statuses: c.targetStatuses }, trigger: c.trigger };
   }
   if ( c.effect === "attackAdvantage" ) {
-    return { kind, roll: "attack", user: { types: c.sourceTypes, subtype: c.sourceSubtype },
-      other: { types: c.targetTypes, subtype: c.targetSubtype } };
+    return { kind, roll: "attack", user: { types: c.sourceTypes, subtype: c.sourceSubtype, statuses: c.sourceStatuses },
+      other: { types: c.targetTypes, subtype: c.targetSubtype, statuses: c.targetStatuses } };
   }
   const roll = c.rollTarget || "attack";
   // Utility: source = item user, target = the other creature.
   return { kind, roll, ability: c.ability || "", skill: c.skill || "",
-    user: { types: c.sourceTypes, subtype: c.sourceSubtype }, other: { types: c.targetTypes, subtype: c.targetSubtype } };
+    user: { types: c.sourceTypes, subtype: c.sourceSubtype, statuses: c.sourceStatuses },
+    other: { types: c.targetTypes, subtype: c.targetSubtype, statuses: c.targetStatuses } };
+}
+
+/**
+ * Midi-QOL expression: does the creature whose roll data is `root` have any of these conditions?
+ * D&D5e puts current conditions in roll data as `statuses`; Bloodied is worked out from hit points.
+ * Raging has no roll-data form, so it returns null and the rule stays with Item Builder's own hooks.
+ */
+function statusExpr(ids, root) {
+  const parts = [];
+  for ( const raw of ids ?? [] ) {
+    const id = String(raw).toLowerCase();
+    if ( id === "raging" ) return null;
+    if ( id === "bloodied" ) parts.push(`(${root}?.attributes?.hp?.value > 0 && ${root}?.attributes?.hp?.value <= ${root}?.attributes?.hp?.max / 2)`);
+    else parts.push(`!!${root}?.statuses?.[${js(id)}]`);
+  }
+  return parts.length ? `(${parts.join(" || ")})` : "";
 }
 
 /**
@@ -461,14 +563,29 @@ export function midiCondition(c, { itemName="", ownUse=false }={}) {
   const user = shape.user ?? {}, other = shape.other ?? {};
   if ( user.types?.length ) parts.push(typeIn(user.types, "actor?.details?.type?.value"));
   if ( user.subtype ) parts.push(subtypeHas(user.subtype, "actor"));
+  if ( user.statuses?.length ) {
+    const e = statusExpr(user.statuses, "actor");
+    if ( e === null ) return "false";
+    parts.push(e);
+  }
   if ( ["check", "skill", "initiative", "concentration"].includes(shape.roll) ) {
-    if ( other.types?.length || other.subtype ) return "false"; // No other creature on a check.
+    if ( other.types?.length || other.subtype || other.statuses?.length ) return "false"; // No other creature on a check.
   } else if ( shape.roll === "save" ) {
     if ( other.types?.length ) parts.push(typeIn(other.types, CASTER_TYPE));
     if ( other.subtype ) parts.push(subtypeHas(other.subtype, CASTER_ROOT));
+    if ( other.statuses?.length ) {
+      const e = statusExpr(other.statuses, `(workflow ? target : (item ? ({ statuses: statuses, attributes: attributes }) : undefined))`);
+      if ( e === null ) return "false";
+      parts.push(e);
+    }
   } else {
     if ( other.types?.length ) parts.push(typeIn(other.types, "raceOrType"));
     if ( other.subtype ) parts.push(subtypeHas(other.subtype, "target"));
+    if ( other.statuses?.length ) {
+      const e = statusExpr(other.statuses, "target");
+      if ( e === null ) return "false";
+      parts.push(e);
+    }
   }
   const activity = String(c.activityName ?? "").trim();
   if ( activity ) parts.push(`${lower("workflow?.activity?.name || workflow?.item?.name")}.includes(${js(activity.toLowerCase())})`);
@@ -733,6 +850,9 @@ export function match(rule, { sourceActor, targetActor, activityName="", activit
   const targetSubtype = String(rule.targetSubtype ?? "").trim().toLowerCase();
   if ( targetSubtype && (!targetActor || !actorMatchesSubtype(targetActor, targetSubtype)) ) return false;
   if ( relevantDamage.length && (!d.length || !relevantDamage.some(x => d.includes(x))) ) return false;
+  // Conditions: any one of the checked conditions is enough. Unknown creature fails closed.
+  if ( rule.sourceStatuses?.length && !(sourceActor && actorHasAnyStatus(sourceActor, rule.sourceStatuses)) ) return false;
+  if ( rule.targetStatuses?.length && !(targetActor && actorHasAnyStatus(targetActor, rule.targetStatuses)) ) return false;
   return true;
 }
 
@@ -1146,9 +1266,65 @@ export function applyRollModes(config, grants, dialog=null) {
 let registered = false;
 const recent = new Map();
 
+/** Find a getter on a class's prototype chain. */
+function getterOf(proto, name) {
+  for ( let p = proto; p; p = Object.getPrototypeOf(p) ) {
+    const d = Object.getOwnPropertyDescriptor(p, name);
+    if ( d?.get ) return d.get;
+  }
+  return null;
+}
+
+/** Does this actor own a status-gated effect? */
+function hasGatedEffects(actor) {
+  return effectsOf(actor).some(e => e.flags?.[MODULE_ID]?.userStatuses?.length)
+    || (actor?.items ?? []).some(i => (i.effects ?? []).some(e => e.flags?.[MODULE_ID]?.userStatuses?.length));
+}
+
+/**
+ * Built-in effects that apply only while the item user has a condition ("while raging",
+ * "while bloodied"). They are suppressed, not disabled, so nothing is written to the database and
+ * the item's tier and Active While settings keep working as before.
+ */
+function registerStatusGates() {
+  const cls = globalThis.CONFIG?.ActiveEffect?.documentClass;
+  if ( !cls ) return;
+  const base = getterOf(cls.prototype, "isSuppressed");
+  Object.defineProperty(cls.prototype, "isSuppressed", {
+    configurable: true,
+    get() {
+      if ( base?.call(this) ) return true;
+      const need = this.flags?.[MODULE_ID]?.userStatuses;
+      if ( !need?.length ) return false;
+      const actor = this.parent?.documentName === "Item" ? this.parent.actor : this.parent?.documentName === "Actor" ? this.parent : null;
+      if ( !actor ) return false;
+      return !actorHasAnyStatus(actor, need);
+    }
+  });
+  // Hit points changing can start or end Bloodied: remember the new maximum and re-prepare.
+  Hooks.on("updateActor", (actor, change) => {
+    if ( !foundry.utils.hasProperty(change, "system.attributes.hp") ) return;
+    hpMax(actor);
+    if ( !hasGatedEffects(actor) ) return;
+    actor.reset?.();
+    for ( const app of Object.values(actor.apps ?? {}) ) app?.render?.(false);
+    if ( actor.sheet?.rendered ) actor.sheet.render(false);
+  });
+  Hooks.once("ready", () => {
+    for ( const actor of game.actors ?? [] ) {
+      hpMax(actor);
+      if ( hasGatedEffects(actor) ) actor.reset?.();
+    }
+    for ( const token of globalThis.canvas?.tokens?.placeables ?? [] ) {
+      if ( token.actor && !token.document.actorLink ) { hpMax(token.actor); if ( hasGatedEffects(token.actor) ) token.actor.reset?.(); }
+    }
+  });
+}
+
 export function registerRuleHooks() {
   if ( registered ) return;
   registered = true;
+  registerStatusGates();
 
   // Only the base hook names are used: D&D5e fires both `preRollX` and `preRollXV2`
   // for every roll, and listening to both would apply bonuses twice.

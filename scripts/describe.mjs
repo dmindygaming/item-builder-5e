@@ -8,7 +8,7 @@
  */
 import { MODULE_ID, usesLabel } from "./compat.mjs";
 import { backgroundLines } from "./background.mjs";
-import { RULE_CATEGORIES, ROLL_TARGETS, participantLabels, triggerOptions } from "./rules.mjs";
+import { RULE_CATEGORIES, ROLL_TARGETS, participantLabels, statusChoices, triggerOptions } from "./rules.mjs";
 import { reactionSummary } from "./reactions.mjs";
 import { requirementLine } from "./requirements.mjs";
 import { lightLine } from "./light.mjs";
@@ -102,11 +102,22 @@ export function ruleSentence(c, { player=false }={}){
     const kinds=[...list,...(sub?[`${sub} creatures`]:[])];
     filters=[];
     if(kinds.length)filters.push(`${c.ruleCategory==="defensive"?"from":"against"} ${listText(kinds)}`);
+    const stSelf=c.ruleCategory==="healing"?"source":self, stOther=stSelf==="source"?"target":"source";
+    const otherSt=statusWords(c[`${stOther}Statuses`]);
+    if(otherSt.length)filters.push(c.ruleCategory==="defensive"
+      ?`when the ${["saveBonus","saveAdvantage"].includes(c.effect)?"creature causing the save":"attacker"} is ${listText(otherSt)}`
+      :c.ruleCategory==="healing"?`when the creature being healed is ${listText(otherSt)}`:`against a target that is ${listText(otherSt)}`);
+    const selfSt=stSelf?statusWords(c[`${stSelf}Statuses`]):[];
+    if(selfSt.length)filters.push(`while you are ${listText(selfSt)}`);
     if(String(c.activityName??"").trim())filters.push(`for ${c.ruleCategory==="defensive"?"attacks":"attacks and abilities"} named “${String(c.activityName).trim()}”`);
     let out=parts.join(" ");
     return out+(filters.length?`, only ${filters.join(" and ")}.`:".");
   }
   filters=[who(p.source,types("sourceTypes"),c.sourceSubtype),who(p.target,types("targetTypes"),c.targetSubtype)].filter(Boolean);
+  for(const k of ["source","target"]){
+    const st=statusWords(c[`${k}Statuses`]);
+    if(st.length)filters.push(`the ${p[k].split(/\s*[/(]/)[0].trim().toLowerCase()} is ${listText(st)}`);
+  }
   if(String(c.activityName??"").trim())filters.push(`the attack or ability is named “${String(c.activityName).trim()}”`);
   let out=parts.join(" ");
   out+=filters.length?`, only when ${listText(filters,"and")}.`:(player?".":", always.");
@@ -114,6 +125,14 @@ export function ruleSentence(c, { player=false }={}){
 }
 
 
+
+/** "prone", "raging", "exhausted": condition words that read after "is" / "are". */
+const STATUS_WORD = { exhaustion: "exhausted", concentrating: "concentrating", invisible: "invisible" };
+function statusWords(ids) {
+  let choices = {};
+  try { choices = statusChoices(); } catch { /* outside Foundry */ }
+  return (ids ?? []).map(id => STATUS_WORD[id] ?? String(choices[id] ?? id).toLowerCase());
+}
 
 const PLURAL = { undead: "undead", fey: "fey", monstrosity: "monstrosities", swarm: "swarms" };
 function plural(word) { return PLURAL[word] ?? (word.endsWith("s") ? word : `${word}s`); }

@@ -18,11 +18,11 @@ import { DEFAULT_BACKGROUND, applyBackgroundAdvancement, backgroundSettings, too
 import { FEAT_POOLS, FEAT_PACK_LABEL, applyFeatAdvancement, featGrantIsNative, publishFeat, publishesToPack, registerFeatHooks, sourceOfCopy, syncFeatGrants } from "./feats.mjs";
 import {
   DAMAGE_RULES, DEFENSIVE_TRIGGERS, FORMULA_RULES, OFFENSIVE_DAMAGE_RULES, ROLL_TARGETS, RULE_CATEGORIES,
-  STATUS_TARGETS, handlingLabel, hasAutomationEffect, participantLabels, triggerOptions, match, registerRuleHooks, ruleDiagnostic,
+  STATUS_TARGETS, statusChoices, handlingLabel, hasAutomationEffect, participantLabels, triggerOptions, match, registerRuleHooks, ruleDiagnostic,
   itemHasOwnUse, ruleFromComponent, sizeAfter, ruleHandling, syncRuleEffects
 } from "./rules.mjs";
 
-const MODULE_VERSION = "1.1.8";
+const MODULE_VERSION = "1.1.9";
 /** Returns every Fighting Style feat (cached), set up at init. */
 let fightingStyles = async () => [];
 /** Every feat (cached), set up at init. */
@@ -107,6 +107,19 @@ function creatureMulti(selected=[]) {
   return Object.entries(cfg("creatureTypes",{})).map(([k,v]) =>
     `<option value="${esc(k)}" ${selected.includes(k)?"selected":""}>${esc(loc(v,k))}</option>`
   ).join("");
+}
+
+/** Checkboxes for conditions a creature must have (D&D5e conditions plus Bloodied, Concentrating, Raging). */
+function statusChecklist(namePrefix, selected=[]) {
+  const chosen = new Set((selected ?? []).map(x => String(x).toLowerCase()));
+  return `<div class="ib311-check-grid ib97-status-grid">${
+    Object.entries(statusChoices()).sort((a,b)=>a[1].localeCompare(b[1])).map(([k,label]) =>
+      `<label class="ib311-check-option">
+        <input type="checkbox" name="${esc(namePrefix)}.${esc(k)}" ${chosen.has(String(k).toLowerCase()) ? "checked" : ""}>
+        <span>${esc(label)}</span>
+      </label>`
+    ).join("")
+  }</div>`;
 }
 
 function creatureChecklist(namePrefix, selected=[]) {
@@ -729,6 +742,9 @@ class ItemBuilder5e extends ApplicationV2 {
         const creatureKeys=Object.keys(cfg("creatureTypes",{}));
         if(creatureKeys.some(k=>checked(`c.${i}.sourceType.${k}`)!==undefined))c.sourceTypes=creatureKeys.filter(k=>checked(`c.${i}.sourceType.${k}`));
         if(creatureKeys.some(k=>checked(`c.${i}.targetType.${k}`)!==undefined))c.targetTypes=creatureKeys.filter(k=>checked(`c.${i}.targetType.${k}`));
+        const statusKeys=Object.keys(statusChoices());
+        if(statusKeys.some(k=>checked(`c.${i}.sourceStatus.${k}`)!==undefined))c.sourceStatuses=statusKeys.filter(k=>checked(`c.${i}.sourceStatus.${k}`));
+        if(statusKeys.some(k=>checked(`c.${i}.targetStatus.${k}`)!==undefined))c.targetStatuses=statusKeys.filter(k=>checked(`c.${i}.targetStatus.${k}`));
         c.sourceSubtype=v(`c.${i}.sourceSubtype`)??c.sourceSubtype;
         c.targetSubtype=v(`c.${i}.targetSubtype`)??c.targetSubtype;
         c.activityName=v(`c.${i}.activityName`)??c.activityName;
@@ -935,7 +951,7 @@ class ItemBuilder5e extends ApplicationV2 {
     if(type==="reaction")Object.assign(c,{name:"Reaction",trigger:"hit",triggerText:"",reactionEffect:"acBonus",formula:"2",damageType:"any",saveAbility:"dex",saveDC:"13",onSave:"half",usesMode:"unlimited",usesCount:"1",usesAbility:"cha",recovery:"lr",text:""});
     if(type==="spell")Object.assign(c,{name:"Granted Spell",spellUuid:"",displayInSpellbook:true,castingAbility:"",level:"",usesMode:"unlimited",usesCount:"1",usesAbility:"cha",recovery:"lr"});
     if(type==="skill")Object.assign(c,{name:"Skill Training",skill:"acr",proficiency:"1",ability:""});
-    if(RULE_CATEGORIES[type])Object.assign(c,{type:"conditional",ruleCategory:type,name:RULE_CATEGORIES[type].label,sourceTypes:[],sourceSubtype:"",targetSubtype:"",activityName:"",targetTypes:[],effect:Object.keys(RULE_CATEGORIES[type].effects)[0],formula:type==="offensive"?"1d6":"",damageType:type==="offensive"?"radiant":"any",canCrit:false,ability:"",status:"",activeEffectKey:"",activeEffectMode:"2",activeEffectValue:"",trigger:type==="defensive"?"damage":"",rollTarget:"attack",skill:"",appliesTo:"self"});
+    if(RULE_CATEGORIES[type])Object.assign(c,{type:"conditional",ruleCategory:type,name:RULE_CATEGORIES[type].label,sourceTypes:[],sourceSubtype:"",targetSubtype:"",sourceStatuses:[],targetStatuses:[],activityName:"",targetTypes:[],effect:Object.keys(RULE_CATEGORIES[type].effects)[0],formula:type==="offensive"?"1d6":"",damageType:type==="offensive"?"radiant":"any",canCrit:false,ability:"",status:"",activeEffectKey:"",activeEffectMode:"2",activeEffectValue:"",trigger:type==="defensive"?"damage":"",rollTarget:"attack",skill:"",appliesTo:"self"});
     this.builderData.components.push(c);
   }
 
@@ -1012,8 +1028,14 @@ class ItemBuilder5e extends ApplicationV2 {
       this._addComponent(type);
       const c=b.components.at(-1);
       if(type!=="light")c.activation=activation;
-      const {sameAsWeapon,...rest}=fields;
+      const {sameAsWeapon,userStatuses,otherStatuses,...rest}=fields;
       Object.assign(c,rest);
+      // "While you are raging" belongs on the item user's side of the rule, "against a prone target" on the other.
+      if(c.type==="conditional"&&(userStatuses||otherStatuses)){
+        const us=c.ruleCategory==="healing"?"source":(selfSide(c)||"source"), os=us==="source"?"target":"source";
+        if(userStatuses?.length)c[`${us}Statuses`]=userStatuses;
+        if(otherStatuses?.length)c[`${os}Statuses`]=otherStatuses;
+      }
       // Untyped extra damage uses the weapon's own damage type.
       if(sameAsWeapon){
         const wt=b.category==="weapon"?b.weaponDamage?.type:"";
@@ -1236,7 +1258,7 @@ class ItemBuilder5e extends ApplicationV2 {
       const self=selfSide(c);
       const showSource=self!=="source"||c.sourceTypes?.length||c.sourceSubtype;
       const showTarget=self!=="target"||c.targetTypes?.length||c.targetSubtype;
-      const whoNote=self?` The ${self==="source"?participants.source:participants.target} is always the item's user, so only the other creature can be filtered.`:"";
+      const whoNote=self?` The ${self==="source"?participants.source:participants.target} is always the item's user, so only the other creature's type can be filtered; conditions can be checked on both.`:"";
       const nameTip=c.ruleCategory==="defensive"
         ?"Only applies when the attacker's attack or ability has this text in its name: “Bite” matches Bite and Poisonous Bite. Leave blank to apply to every attack and ability."
         :"Only applies when the attack or ability being used has this text in its name: “Bite” matches Bite and Poisonous Bite. Leave blank to apply to every attack and ability.";
@@ -1260,6 +1282,13 @@ class ItemBuilder5e extends ApplicationV2 {
               <select name="c.${i}.sourceSubtype">${creatureSubtypeOptions(c.sourceSubtype)}</select></label>`:""}
             ${showTarget?`<label>${esc(participants.target)} Subtype ${this._tip(`Uses subtype metadata first, then custom creature type or actor name when metadata is blank.`)}
               <select name="c.${i}.targetSubtype">${creatureSubtypeOptions(c.targetSubtype)}</select></label>`:""}
+            ${(()=>{const side=(k)=>{const user=self===k;const label=`${k==="source"?participants.source:participants.target} Has a Condition`;
+              const tip=user?"Only while the item's user has at least one of the checked conditions, such as Raging or Bloodied. Leave all unchecked to ignore conditions.":"Only when the other creature has at least one of the checked conditions, such as Prone or Frightened. Leave all unchecked to ignore conditions.";
+              const list=c[`${k}Statuses`]??[];
+              return `<details class="ib311-field-block ib97-status-block" ${list.length?"open":""}><summary class="ib311-label">${esc(label)}${list.length?` <span class="muted">(${list.length})</span>`:""} ${this._tip(tip)}</summary>${statusChecklist(`c.${i}.${k}Status`,list)}</details>`;};
+              const noOther=c.ruleCategory==="healing"?false:["check","skill","initiative","concentration"].includes(c.rollTarget)&&["advantage","disadvantage"].includes(c.effect);
+              const userFirst=self==="target"?["target","source"]:["source","target"];
+              return userFirst.filter(k=>!(noOther&&k!==self)).map(side).join("");})()}
             <label>${c.ruleCategory==="defensive"?"Attacker's Attack or Ability Named":"Attack or Ability Named"} ${this._tip(nameTip)}
               <input name="c.${i}.activityName" value="${esc(c.activityName)}" placeholder="Any attack or ability"></label>
           </div>
@@ -1340,6 +1369,8 @@ class ItemBuilder5e extends ApplicationV2 {
       if(c.sourceSubtype)details.push(`attacker/item user subtype: ${c.sourceSubtype}`);
       if(c.targetTypes?.length)details.push(`target: ${c.targetTypes.join(", ")}`);
       if(c.targetSubtype)details.push(`target subtype: ${c.targetSubtype}`);
+      if(c.sourceStatuses?.length)details.push(`${participantLabels(c).source.toLowerCase()} has: ${c.sourceStatuses.join(" or ")}`);
+      if(c.targetStatuses?.length)details.push(`${participantLabels(c).target.toLowerCase()} has: ${c.targetStatuses.join(" or ")}`);
       if(c.activityName)details.push(`activity contains “${c.activityName}”`);
       if(c.trigger)details.push(triggerOptions(c.effect)[c.trigger]??DEFENSIVE_TRIGGERS[c.trigger]??c.trigger);
       if(c.ability)details.push(`ability: ${loc(cfg("abilities",{})[c.ability],c.ability)}`);

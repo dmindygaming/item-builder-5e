@@ -189,6 +189,7 @@ export const HELP_SECTIONS = [
       <ol>
         <li><b>Effect</b> and its settings at the top (amount, damage type, when it applies…).</li>
         <li><b>Only when… (optional)</b> — creature type, subtype, and attack or ability name filters. Leave them blank and the effect always applies; every box you fill in must match.</li>
+        <li><b>Has a Condition</b> (under Only when…) — the rule applies only while a creature has at least one of the checked conditions: any D&amp;D5e condition (Prone, Frightened, Grappled, Restrained, Invisible…) plus <b>Bloodied</b> (at or below half its hit points), <b>Concentrating</b> and <b>Raging</b>. There is one list for the item's user (<i>+2 to attack rolls while you are raging</i>, <i>resistance to all damage while bloodied</i>) and one for the other creature (<i>an extra 1d6 damage against a prone target</i>, <i>+2 AC against invisible attackers</i>). Built-in effects such as a speed bonus are switched on and off with the user's condition; the rest are checked at roll time.</li>
         <li>A <b>plain-English summary</b> at the bottom that updates as you edit.</li>
       </ol>
       <p>The coloured banner on each card says how the rule works:</p>
@@ -301,7 +302,7 @@ export const HELP_SECTIONS = [
     body: `
       <dl>
         <dt>A character's item didn't change after I edited it</dt><dd>Editing the item in the Items sidebar doesn't change copies characters already have. Edit the character's copy, or replace it.</dd>
-        <dt>A rule doesn't seem to apply</dt><dd>Check the item is equipped (and attuned, if required), its tier has been reached, and the card's <b>Only when…</b> filters match. Creature-type filters don't match creatures with no type set.</dd>
+        <dt>A rule doesn't seem to apply</dt><dd>Check the item is equipped (and attuned, if required), its tier has been reached, and the card's <b>Only when…</b> filters match. Creature-type filters don't match creatures with no type set. A condition filter needs that condition on the creature (as a status on its token, or for Raging an active Rage effect); Bloodied is read from hit points.</dd>
         <dt>Rule diagnostics</dt><dd>${where("Game Settings → Configure Settings → Item Builder 5e → <b>Item Builder rule diagnostics</b>")}Logs why each rule did or didn't match to the browser console (F12).</dd>
         <dt>Updates</dt><dd>Installed from the manifest link, Foundry's <b>Check for Updates</b> offers new versions. Version history: <a href="https://github.com/dmindygaming/item-builder-5e/blob/main/CHANGELOG.md" target="_blank" rel="noopener">changelog</a>.</dd>
       </dl>`

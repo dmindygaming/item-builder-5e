@@ -93,6 +93,26 @@ const CLAUSE_RULE = /\b(regain|hit points|breathe|can't|cannot|immune|advantage|
 const CATEGORY_LABELS = { consumable: "Consumable", equipment: "Other Equipment", armor: "Armor", weapon: "Weapon" };
 
 /** Condition words and their common synonyms. */
+// Conditions a rule can require, as words that follow "you are" / "a … target": word → status id.
+const STATUS_WORD_IDS = {
+  blinded: "blinded", charmed: "charmed", deafened: "deafened", frightened: "frightened", grappled: "grappled",
+  incapacitated: "incapacitated", invisible: "invisible", paralyzed: "paralyzed", paralysed: "paralyzed", petrified: "petrified",
+  poisoned: "poisoned", prone: "prone", restrained: "restrained", stunned: "stunned", unconscious: "unconscious",
+  exhausted: "exhaustion", bloodied: "bloodied", concentrating: "concentrating", raging: "raging", "in a rage": "raging",
+  surprised: "surprised", bleeding: "bleeding", burning: "burning", "on fire": "burning", silenced: "silenced"
+};
+const STATUS_ALT = Object.keys(STATUS_WORD_IDS).sort((a, b) => b.length - a.length).map(w => w.replace(/ /g, "\\s+")).join("|");
+const STATUS_LIST = `(?:${STATUS_ALT})(?:(?:,|,?\\s+or|,?\\s+and)\\s+(?:${STATUS_ALT}))*`;
+const statusIds = list => [...new Set([...String(list).matchAll(new RegExp(`\\b(?:${STATUS_ALT})\\b`, "g"))].map(m => STATUS_WORD_IDS[m[0].replace(/\s+/g, " ")]).filter(Boolean))];
+// "while you are raging", "while bloodied", "as long as you're concentrating", "if you are prone"
+const USER_STATUS_RE = new RegExp(`\\b(?:while|when(?:ever)?|as long as|if)\\s+(?:you(?:'re|\\s+are)\\s+|the\\s+(?:wearer|wielder|bearer|user)\\s+is\\s+)?(?:currently\\s+)?(${STATUS_LIST})\\b`);
+// "against a prone target", "against frightened creatures", "if the target is grappled", "creatures that are restrained"
+const OTHER_STATUS_RES = [
+  new RegExp(`\\b(?:against|on|to|at|hit|hits|attack|attacks|targeting)\\s+(?:a|an|any|the|each)?\\s*(${STATUS_LIST})\\s+(?:creatures?|targets?|enem(?:y|ies)|foes?|opponents?|monsters?)\\b`),
+  new RegExp(`\\b(?:creatures?|targets?|enem(?:y|ies)|foes?|opponents?|attackers?|it)\\s+(?:that|who|which)?\\s*(?:is|are)\\s+(?:currently\\s+|already\\s+)?(${STATUS_LIST})\\b`)
+];
+const RULE_TYPES = new Set(["offensive", "defensive", "healing", "utility"]);
+
 const CONDITION_WORDS = [
   ["charmed", /\bcharm(?:ed|s|ing)?\b/], ["frightened", /\bfright(?:en(?:ed|ing|s)?|ful)\b|\bfear(?:s|ful)?\b|\bscared\b|\bterrif\w*|\bterror\b/],
   ["poisoned", /\bpoisoned\b|\bpoison\b(?!\s+damage)/], ["paralyzed", /\bparaly[sz]\w*/], ["stunned", /\bstun(?:ned|s)?\b/],
@@ -999,6 +1019,25 @@ export function parseDescription(text, ctx={}) {
     const when = /\bwhile (?:you(?:'re| are) )?attuned\b|\bwhile attuned\b|\bwhen attuned\b/.test(s) ? "attuned"
       : /\bwhile (?:you )?(?:wear|wearing|worn|wield|wielding|wielded|hold|holding|held|equipped)\b/.test(s) ? "equipped" : "";
     if ( when ) for ( const f of found ) if ( f.component && f.component.type !== "light" ) f.component.activation = when;
+    // Conditions a rule depends on: "while you are raging", "against a prone target".
+    const userSt = s.match(USER_STATUS_RE);
+    const otherSt = OTHER_STATUS_RES.map(re => s.match(re)).find(Boolean);
+    if ( userSt || otherSt ) for ( const f of found ) {
+      const c = f.component;
+      if ( !c ) continue;
+      // A speed bonus that only applies in a condition becomes a rule, which can be switched on and off.
+      if ( c.type === "movement" && c.mode === "add" && userSt && !otherSt ) {
+        f.component = { type: "utility", effect: "movementControl", name: c.name, formula: String(c.value), ability: c.movementType };
+      }
+      const r = f.component;
+      if ( !RULE_TYPES.has(r.type) ) continue;
+      // Saving throws against a condition ("advantage on saves against being frightened") aren't a status filter.
+      if ( r.trigger === "saveAgainstCondition" && !userSt ) continue;
+      const u = userSt ? statusIds(userSt[1]) : [], o = otherSt ? statusIds(otherSt[1]) : [];
+      if ( u.length ) r.userStatuses = u;
+      if ( o.length && !(r.type === "utility" && ["check", "skill", "initiative", "concentration"].includes(r.rollTarget)) ) r.otherStatuses = o;
+      if ( u.length || r.otherStatuses ) f.label += ` (${[u.length ? `while you are ${u.join(" or ")}` : "", r.otherStatuses ? `${r.type === "defensive" ? "when the attacker is" : "against a target that is"} ${o.join(" or ")}` : ""].filter(Boolean).join("; ")})`;
+    }
     if ( found.length ) {
       findings.push(...found);
       // A sentence can be part automated: "…, and you can breathe water." Clauses with a rule in them
