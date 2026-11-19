@@ -20,6 +20,7 @@ import {
 import { syncRuleEffects } from "./rules.mjs";
 import { upgradeHalfAsi } from "./asi.mjs";
 import { syncReactions } from "./reactions.mjs";
+import { syncRecharges } from "./recharge.mjs";
 import { refreshItemDescription } from "./describe.mjs";
 
 const { ApplicationV2, DialogV2 } = foundry.applications.api;
@@ -305,6 +306,7 @@ async function upgradeImportedRules(item) {
     if ( (item.getFlag(MODULE_ID, "components") ?? []).some(c => c.type === "conditional") ) await syncRuleEffects(item);
     if ( (Number(item.getFlag(MODULE_ID, "schemaVersion")) || 0) < 10 ) await upgradeHalfAsi(item);
     if ( (item.getFlag(MODULE_ID, "components") ?? []).some(c => c.type === "reaction") ) await syncReactions(item);
+    if ( (item.getFlag(MODULE_ID, "components") ?? []).some(c => c.type === "recharge") ) await syncRecharges(item);
     const html = item.system?.description?.value ?? "";
     const clean = stripBuilderDescription(html);
     await item.update({ [`flags.${MODULE_ID}.schemaVersion`]: 13, ...(clean !== html ? { "system.description.value": clean } : {}),

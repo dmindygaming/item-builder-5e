@@ -111,6 +111,28 @@ const OTHER_STATUS_RES = [
   new RegExp(`\\b(?:against|on|to|at|hit|hits|attack|attacks|targeting)\\s+(?:a|an|any|the|each)?\\s*(${STATUS_LIST})\\s+(?:creatures?|targets?|enem(?:y|ies)|foes?|opponents?|monsters?)\\b`),
   new RegExp(`\\b(?:creatures?|targets?|enem(?:y|ies)|foes?|opponents?|attackers?|it)\\s+(?:that|who|which)?\\s*(?:is|are)\\s+(?:currently\\s+|already\\s+)?(${STATUS_LIST})\\b`)
 ];
+// "against creatures larger than you", "if the target is at least two sizes smaller than you", "your size or larger"
+const SIZE_KEY_WORDS = { tiny: "tiny", small: "sm", medium: "med", large: "lg", huge: "huge", gargantuan: "grg" };
+const SIZE_RES = [
+  [/\b(tiny|small|medium|large|huge|gargantuan) (?:size )?or (larger|bigger|greater|smaller|less)\s+(?:creatures?|targets?|enem(?:y|ies)|foes?|attackers?|opponents?|monsters?)\b/, m => ["abs" + (/smaller|less/.test(m[2]) ? "max" : "min"), m[1]]],
+  [/\b(?:creatures?|targets?|enem(?:y|ies)|foes?|attackers?|opponents?|monsters?)\s+(?:that (?:is|are)\s+|who (?:is|are)\s+|of\s+)?(tiny|small|medium|large|huge|gargantuan) (?:size )?or (larger|bigger|greater|smaller|less)\b/, m => ["abs" + (/smaller|less/.test(m[2]) ? "max" : "min"), m[1]]],
+  [/\b(?:creatures?|targets?|enem(?:y|ies)|foes?|attackers?|opponents?|monsters?|it|they|one)\s+(?:that (?:is|are)\s+|who (?:is|are)\s+|(?:is|are)\s+)?(?:at least\s+(one|two|three|four|\d)\s+sizes?\s+)?(larger|bigger|smaller)\s+than (?:you|yourself|the wearer|the wielder)\b/, m => [m[2], m[1]]],
+  [/\b(larger|bigger|smaller)\s+(?:creatures?|targets?|enem(?:y|ies)|foes?|attackers?|opponents?)\b/, m => [m[1], null]],
+  [/\b(?:your size or (larger|bigger|smaller)|(larger|bigger|smaller) than or (?:the same|equal to your) size)\b/, m => ["or" + (m[1] ?? m[2]), null]],
+  [/\b(?:the same size as you|your own size|your size)\b/, () => ["same", null]]
+];
+function sizeIn(s) {
+  for ( const [re, f] of SIZE_RES ) {
+    const m = s.match(re);
+    if ( !m ) continue;
+    const [w, by] = f(m);
+    if ( /^abs/.test(w) ) return { compare: w === "absmin" ? "minSize" : "maxSize", steps: "1", sizeKey: SIZE_KEY_WORDS[by] };
+    const compare = w === "same" ? "same" : /^or/.test(w) ? (/smaller/.test(w) ? "atMost" : "atLeast") : (/smaller/.test(w) ? "smaller" : "larger");
+    return { compare, steps: by ? String(num(by) ?? 1) : "1" };
+  }
+  return null;
+}
+const SIZE_SAID = { minSize: "that size or larger", maxSize: "that size or smaller", larger: "larger than you", smaller: "smaller than you", atLeast: "your size or larger", atMost: "your size or smaller", same: "your size" };
 const RULE_TYPES = new Set(["offensive", "defensive", "healing", "utility"]);
 
 const CONDITION_WORDS = [
@@ -285,6 +307,7 @@ export function parseDescription(text, ctx={}) {
     list[0] = { ...list[0], text: colonName[2] };
   }
   const firstText = list[0]?.text;
+  let lastRecharge = null, sentenceNo = 0;   // a recharge's limit is often in the next sentence
   let pendingUses = null;   // "The cloak has 3 charges..." waiting for the spells that use them.
   let spellTable = null;    // inside a "cast one of the spells on the following table" list
   const spellList = [...(ctx.spells ?? [])].sort((a, b) => b.name.length - a.name.length);
@@ -552,6 +575,101 @@ export function parseDescription(text, ctx={}) {
     }
 
     // --- Spells ---
+    sentenceNo++;
+    // "Once used, it can't be used again until the next dawn." / "You can do this a number of times equal to your
+    // proficiency bonus": the limit of a recharge in the sentence before.
+    if ( lastRecharge && lastRecharge.no >= sentenceNo - 2 && lastRecharge.tier === tier && lastRecharge.c.target === "spellSlot"
+      && !lastRecharge.levelSet && (m = s.match(/\b(?:new|regained|restored) slot is (?:a )?(?:(\d)(?:st|nd|rd|th)[- ]level|level (\d))/)) ) {
+      lastRecharge.c.slotLevel = String(m[1] ?? m[2]);
+      lastRecharge.levelSet = true;
+      lastRecharge.finding.label = lastRecharge.finding.label.replace(/level \d or lower/, `level ${lastRecharge.c.slotLevel} or lower`);
+      add(`Recharge: slots of level ${lastRecharge.c.slotLevel} or lower`);
+      findings.push(...found);
+      continue;
+    }
+    if ( lastRecharge && lastRecharge.no >= sentenceNo - 2 && lastRecharge.tier === tier
+      && /\b(?:\d+ charges|once used|can't (?:be used|do so|use (?:it|this)) again|cannot (?:be used|do so) again|until (?:the next )?dawn|you can do (?:this|so)|you can use (?:this|it)|number of times equal to|times per|per (?:long|short) rest|per day)\b/.test(s) ) {
+      const c = lastRecharge.c;
+      const lim = usesIn(s, T) ?? (/\buntil (?:the next )?dawn\b/.test(s) ? { usesMode: "fixed", usesCount: "1", recovery: "dawn" }
+        : /\buntil you finish a short or long rest|\buntil you finish a short rest\b/.test(s) ? { usesMode: "fixed", usesCount: "1", recovery: "sr" }
+        : /\buntil you finish a long rest\b/.test(s) ? { usesMode: "fixed", usesCount: "1", recovery: "lr" } : null);
+      if ( lim && lim.usesMode !== "unlimited" ) {
+        if ( /\buntil (?:the next )?dawn\b/.test(s) ) lim.recovery = "dawn";
+        delete c.usesCount; delete c.usesAbility;
+        Object.assign(c, lim);
+        lastRecharge.finding.label = lastRecharge.finding.label.replace(/ \([^)]*\/[^)]*\)$/, "") + usesNote(c);
+        add(`Recharge limit${usesNote(c)}`);
+        findings.push(...found);
+        continue;
+      }
+    }
+    // --- Recharging class abilities and spell slots ---
+    // "regain one expended use of Channel Divinity", "regain 1d4 Focus Points", "regain one expended spell slot of 3rd level or lower"
+    {
+      const REGAIN = /\b(?:regain|regains|recover|recovers|restore|restores|recharge|recharges)\b/;
+      const rg = s.match(REGAIN);
+      if ( rg && !ctx._clause && !/\b(?:once|after) you (?:regain|recover|restore)\b/.test(s) && !/\bhit points?\b|\bhit dice\b|\bcharges?\b|\buntil you have\b|\blevels?'? worth\b|\bcombined level\b/.test(s.slice(rg.index, rg.index + 80)) ) {
+        const after = s.slice(rg.index + rg[0].length);
+        const AMT = `(all|every|one|two|three|four|five|a single|an?|\\d+d\\d+(?:\\s*\\+\\s*\\d+)?|\\d+)`;
+        const slot = after.match(new RegExp(`^\\s+(?:${AMT}\\s+)?(?:of your\\s+)?(?:expended\\s+)?spell slots?`));
+        const uses = slot ? null : after.match(new RegExp(`^\\s+(?:${AMT}\\s+)?(?:of\\s+)?(?:your\\s+|its\\s+)?(?:expended\\s+)?uses?\\s+(?:of|for)\\s+(?:your\\s+|the\\s+)?([a-z'’ ]+?)(?:\\s+(?:class\\s+)?(?:feature|ability))?(?=\\s*(?:[,.;]|$|\\bwhen\\b|\\bif\\b|\\bat\\b|\\bafter\\b|\\band\\b|\\bonce\\b|\\bas\\b|\\bon (?:a|an|each|every|your)\\b|\\bevery\\b|\\beach\\b|\\bper\\b|\\bwhenever\\b))`));
+        const points = slot || uses ? null : after.match(new RegExp(`^\\s+(?:${AMT}\\s+)?(?:expended\\s+)?(?:of your\\s+)?(focus points?|ki points?|ki|sorcery points?|superiority dice|superiority die|bardic inspiration|rages?|wild shapes?|luck points?)\\b`));
+        const direct = slot || uses || points || !/^recharges?$/.test(rg[0]) ? null
+          : after.match(/^\s+(?:a use of |one use of |all uses of |your |the )?([a-z'’]+(?: (?:of |on )?[a-z'’]+){0,3}?)(?=\s*(?:[,.;]|$|\bwhen\b|\bif\b|\bat\b|\bafter\b|\bonce\b|\bon (?:a|an|each|every|your)\b|\bevery\b|\beach\b|\bper\b))/);
+        let hit = slot ?? uses ?? points ?? (direct && !/\d|\bcharges?\b|\bhit\b|\bhealth\b|\buses?\b|\busage\b|^(?:it|this|that|them|itself)$/.test(direct[1]) ? [direct[0], /^\s+all uses/.test(direct[0]) ? "all" : "one", direct[1]] : null);
+        // "regain one use of it" / "of this feature": the ability named earlier ("if you have no uses of Wild Shape left"),
+        // or else the feature's own recovery, which isn't a recharge.
+        let named = uses ? uses[2].trim() : "";
+        if ( uses && /^(?:it|this|that|them|these|its?|this (?:feature|ability|item|trait|benefit|property)|the (?:feature|ability|item)|feature|ability|item|all)$/.test(named) ) {
+          const ref = s.match(/\bno (?:uses|expended uses) of (?:your )?([a-z'’ ]+?) (?:left|remaining)\b/);
+          if ( ref ) named = ref[1]; else hit = null;
+        }
+        if ( hit ) {
+          const amtWord = String(hit[1] ?? "one").trim();
+          const all = /^(?:all|every)$/.test(amtWord);
+          const amount = all ? "1" : /d/.test(amtWord) ? amtWord.replace(/\s+/g, " ") : String(num(amtWord.replace(/^(?:an?|a single)$/, "one")) ?? 1);
+          const title = w => w.replace(/[’]/g, "'").trim().split(/\s+/).map((x, i) => (i && /^(?:of|the|on|and)$/.test(x)) ? x : x.charAt(0).toUpperCase() + x.slice(1)).join(" ");
+          const c = { type: "recharge", name: "Recharge", amount, all: all && !slot };
+          if ( slot ) {
+            c.target = "spellSlot";
+            const lv = s.match(/\b(\d)(?:st|nd|rd|th)[- ]level\b|\blevel (\d)\b/);
+            c.slotLevel = String(lv ? (lv[1] ?? lv[2]) : 9);
+          } else if ( uses && /\b(?:of your choice|you choose|any (?:one )?of your|a class feature)\b/.test(uses[2]) ) {
+            c.target = "choice";
+          } else {
+            c.target = "feature";
+            c.featureName = title(uses ? named : hit[2]);
+          }
+          // How it happens.
+          c.trigger = /\bas a bonus action\b|\bbonus action\b/.test(s) ? "bonus"
+            : /\bas a reaction\b/.test(s) ? "reaction"
+            : /\bas an? (?:magic )?action\b|\b(?:use|take) an? (?:magic )?action\b/.test(s) ? "action"
+            : /\bshort or long rest\b|\bshort rest or (?:a )?long rest\b|\bany rest\b/.test(s) ? "anyRest"
+            : /\bfinish(?:es)? a short rest\b|\bafter a short rest\b|\bon a short rest\b/.test(s) ? "shortRest"
+            : /\bfinish(?:es)? a long rest\b|\bafter a long rest\b|\bon a long rest\b/.test(s) ? "longRest"
+            : /\broll(?:s)? initiative\b/.test(s) ? "initiative"
+            : /\bstart of (?:each of )?your turns?\b/.test(s) ? "turnStart"
+            : /\bcritical hit\b|\bscore a crit/.test(s) ? "critical"
+            : /\bdawn\b|\beach day\b|\bnew day\b/.test(s) ? "dawn" : "action";
+          if ( c.trigger === "critical" && /\bwith (?:this|the) (?:weapon|item|blade|sword|staff|bow)\b/.test(s) ) c.thisItemOnly = true;
+          if ( /\bif you have no (?:\w+ )?(?:uses|points|dice)?\s*(?:of it |of that |remaining |left)|\bno (?:uses|points) (?:of it )?(?:left|remaining)|\bwhen you have none left\b|\bhave no uses\b/.test(s) ) c.onlyIfEmpty = true;
+          // How often: "once per long rest", "a number of times equal to your proficiency bonus".
+          const lim = usesIn(s.replace(REGAIN, " ").replace(/\b(?:one|two|three|\d+) (?:expended )?(?:uses?|spell slots?|points?)\b/g, " "), T);
+          if ( lim && lim.usesMode !== "unlimited" ) Object.assign(c, lim);
+          else if ( ["action", "bonus", "reaction"].includes(c.trigger) ) Object.assign(c, { usesMode: "fixed", usesCount: "1", recovery: /\bdawn\b/.test(s) ? "dawn" : "lr" });
+          else c.usesMode = "unlimited";
+          // The same recharge said again ("This feature includes an activity … which will recharge all of your Rage uses").
+          const same = x => x?.type === "recharge" && x.target === c.target && String(x.featureName ?? "").toLowerCase() === String(c.featureName ?? "").toLowerCase()
+            && (c.target !== "spellSlot" || x.slotLevel === c.slotLevel);
+          if ( ![...findings, ...found].some(f => same(f.component)) ) {
+          const what = c.target === "spellSlot" ? `spell slot (level ${c.slotLevel} or lower)` : c.target === "choice" ? "an ability of the player's choice" : c.featureName;
+          add(`Recharge: ${all ? "all uses" : amount} of ${what} — ${c.trigger}${c.onlyIfEmpty ? ", only when empty" : ""}${usesNote(c)}`, c);
+          lastRecharge = { c, finding: found.at(-1), no: sentenceNo, tier, levelSet: !!(c.target === "spellSlot" && /\blevel \d|\d(?:st|nd|rd|th)[- ]level/.test(s)) };
+          }
+        }
+      }
+    }
+
     // A spell counts when the item's user casts it: it comes after "cast" / "casts" / "scroll of" /
     // "know the … cantrip", not before it ("this magic weapon…") and not passively ("a Light spell
     // cast on the robe", "is cast on you", "unless … cast").
@@ -977,7 +1095,7 @@ export function parseDescription(text, ctx={}) {
     // --- Size ---
     if ( (m = s.match(/\b(?:grows?|becomes?|turns?|increases?) (?:to |into )?(?:size )?(tiny|small|medium|large|huge|gargantuan)\b(?! creature that)/)) && /\byou\b|\bwielder\b|\bwearer\b|\buser\b/.test(s) ) {
       add(`Size becomes ${cap(m[1])}`, { type: "utility", effect: "sizeChange", name: `Size: ${cap(m[1])}`, sizeMode: "set", size: SIZE_WORDS[m[1]] });
-    } else if ( (m = s.match(new RegExp(`\\b(grows?|increases?|shrinks?|decreases?|reduces?)[a-z ]*? by ${NUMBER} size|\\b${NUMBER} sizes? (larger|bigger|smaller)`))) ) {
+    } else if ( !sizeIn(s) && (m = s.match(new RegExp(`\\b(grows?|increases?|shrinks?|decreases?|reduces?)[a-z ]*? by ${NUMBER} size|\\b${NUMBER} sizes? (larger|bigger|smaller)`))) ) {
       const shrink = /shrink|decrease|reduce|smaller/.test(m[0]);
       const n = num(m[2] ?? m[3]) ?? 1;
       add(`${shrink ? "Shrink" : "Grow"} ${n} size${n > 1 ? "s" : ""}`, { type: "utility", effect: "sizeChange", name: shrink ? "Shrink" : "Enlarge", sizeMode: shrink ? "shrink" : "grow", sizeSteps: String(Math.min(3, n)) });
@@ -1022,6 +1140,16 @@ export function parseDescription(text, ctx={}) {
     // Conditions a rule depends on: "while you are raging", "against a prone target".
     const userSt = s.match(USER_STATUS_RE);
     const otherSt = OTHER_STATUS_RES.map(re => s.match(re)).find(Boolean);
+    const size = sizeIn(s);
+    if ( size ) for ( const f of found ) {
+      const r = f.component;
+      if ( !r || !RULE_TYPES.has(r.type) || r.type === "healing" ) continue;
+      if ( r.type === "utility" && ["check", "skill", "initiative", "concentration"].includes(r.rollTarget) ) continue;
+      r.sizeCompare = size.compare; r.sizeSteps = size.steps;
+      if ( size.sizeKey ) r.sizeKey = size.sizeKey;
+      const said = size.sizeKey ? `${Object.keys(SIZE_KEY_WORDS).find(k => SIZE_KEY_WORDS[k] === size.sizeKey)} or ${size.compare === "minSize" ? "larger" : "smaller"}` : `${size.steps !== "1" ? `at least ${size.steps} sizes ` : ""}${SIZE_SAID[size.compare]}`;
+      f.label += ` (${r.type === "defensive" ? "when the attacker is" : r.rollTarget === "save" ? "when the creature causing the save is" : "against a target that is"} ${said})`;
+    }
     if ( userSt || otherSt ) for ( const f of found ) {
       const c = f.component;
       if ( !c ) continue;

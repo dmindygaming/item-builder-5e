@@ -10,6 +10,7 @@ import { MODULE_ID, usesLabel } from "./compat.mjs";
 import { backgroundLines } from "./background.mjs";
 import { RULE_CATEGORIES, ROLL_TARGETS, participantLabels, statusChoices, triggerOptions } from "./rules.mjs";
 import { reactionSummary } from "./reactions.mjs";
+import { rechargeSummary } from "./recharge.mjs";
 import { requirementLine } from "./requirements.mjs";
 import { lightLine } from "./light.mjs";
 
@@ -107,6 +108,11 @@ export function ruleSentence(c, { player=false }={}){
     if(otherSt.length)filters.push(c.ruleCategory==="defensive"
       ?`when the ${["saveBonus","saveAdvantage"].includes(c.effect)?"creature causing the save":"attacker"} is ${listText(otherSt)}`
       :c.ruleCategory==="healing"?`when the creature being healed is ${listText(otherSt)}`:`against a target that is ${listText(otherSt)}`);
+    const sz=c.ruleCategory==="healing"?"":sizeWords(c);
+    if(sz)filters.push(c.ruleCategory==="defensive"
+      ?`when the ${["saveBonus","saveAdvantage"].includes(c.effect)?"creature causing the save":"attacker"} is ${sz}`
+      :c.ruleCategory==="utility"&&c.rollTarget==="save"?`when the creature causing the save is ${sz}`
+      :`against a target that is ${sz}`);
     const selfSt=stSelf?statusWords(c[`${stSelf}Statuses`]):[];
     if(selfSt.length)filters.push(`while you are ${listText(selfSt)}`);
     if(String(c.activityName??"").trim())filters.push(`for ${c.ruleCategory==="defensive"?"attacks":"attacks and abilities"} named “${String(c.activityName).trim()}”`);
@@ -114,6 +120,10 @@ export function ruleSentence(c, { player=false }={}){
     return out+(filters.length?`, only ${filters.join(" and ")}.`:".");
   }
   filters=[who(p.source,types("sourceTypes"),c.sourceSubtype),who(p.target,types("targetTypes"),c.targetSubtype)].filter(Boolean);
+  if(c.sizeCompare&&c.ruleCategory!=="healing"){
+    const otherSide=(selfSide(c)??"source")==="source"?"target":"source";
+    filters.push(`the ${p[otherSide].split(/\s*[/(]/)[0].trim().toLowerCase()} is ${sizeWords(c).replace(/\byou\b/g,"the item user").replace("your size","the item user's size")}`);
+  }
   for(const k of ["source","target"]){
     const st=statusWords(c[`${k}Statuses`]);
     if(st.length)filters.push(`the ${p[k].split(/\s*[/(]/)[0].trim().toLowerCase()} is ${listText(st)}`);
@@ -125,6 +135,16 @@ export function ruleSentence(c, { player=false }={}){
 }
 
 
+
+/** "larger than you", "at least two sizes smaller than you", "your size or larger". */
+const SIZE_NAMES = { tiny: "Tiny", sm: "Small", med: "Medium", lg: "Large", huge: "Huge", grg: "Gargantuan" };
+function sizeWords(c) {
+  if ( c.sizeCompare === "minSize" || c.sizeCompare === "maxSize" ) return `${SIZE_NAMES[c.sizeKey || "lg"]} or ${c.sizeCompare === "minSize" ? "larger" : "smaller"}`;
+  const n = Math.max(1, Number(c.sizeSteps) || 1);
+  const by = n > 1 ? `at least ${["", "one", "two", "three", "four"][n] ?? n} sizes ` : "";
+  return { larger: `${by}larger than you`, smaller: `${by}smaller than you`, atLeast: "your size or larger",
+    atMost: "your size or smaller", same: "your size" }[c.sizeCompare] ?? "";
+}
 
 /** "prone", "raging", "exhausted": condition words that read after "is" / "are". */
 const STATUS_WORD = { exhaustion: "exhausted", concentrating: "concentrating", invisible: "invisible" };
@@ -184,6 +204,8 @@ export function componentLine(c, { spellName, names={} }={}) {
       const lvl = Number(c.level);
       return `You can cast ${spellName}${Number.isFinite(lvl) && c.level !== "" && lvl > 0 ? ` at ${ORD(lvl)} level` : ""}${usesText(c) || " at will"}`;
     }
+    case "recharge":
+      return rechargeSummary(c, abilityName).replace(/\.$/, "");
     case "reaction":
       return reactionSummary(c, abilityName).replace(/\.$/, "").replace(/^Reaction —/, `${c.name || "Reaction"} (Reaction) —`);
     case "reference":

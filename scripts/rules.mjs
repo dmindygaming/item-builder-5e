@@ -57,6 +57,56 @@ export function statusChoices() {
   return out;
 }
 
+/* -------------------------------------------- */
+/*  Size compared with the item user            */
+/* -------------------------------------------- */
+
+/** How the other creature's size compares with the item user's. */
+export const SIZE_COMPARE = {
+  "": "Any Size",
+  larger: "Larger Than the Item User",
+  smaller: "Smaller Than the Item User",
+  atLeast: "The Item User's Size or Larger",
+  atMost: "The Item User's Size or Smaller",
+  same: "The Same Size as the Item User",
+  minSize: "A Size or Larger (e.g. Large or Larger)",
+  maxSize: "A Size or Smaller (e.g. Small or Smaller)"
+};
+/** Sizes offered for "Large or Larger" style filters. */
+export const SIZE_KEYS = { tiny: "Tiny", sm: "Small", med: "Medium", lg: "Large", huge: "Huge", grg: "Gargantuan" };
+const SIZE_ORDER = ["tiny", "sm", "med", "lg", "huge", "grg"];
+
+/** A size key as a number (Tiny 0 … Gargantuan 5), or null if unknown. */
+export function sizeRank(key) {
+  const k = String(key ?? "");
+  const n = globalThis.CONFIG?.DND5E?.actorSizes?.[k]?.numerical;
+  if ( Number.isFinite(n) ) return n;
+  const i = SIZE_ORDER.indexOf(k);
+  return i >= 0 ? i : null;
+}
+
+/** Does `other`'s size compare with `user`'s as the rule asks? `steps` = how many sizes larger/smaller at least. */
+export function sizeMatches(compare, steps, user, other, sizeKey="lg") {
+  if ( !compare ) return true;
+  const o = sizeRank(other?.system?.traits?.size);
+  if ( compare === "minSize" || compare === "maxSize" ) {
+    const k = sizeRank(sizeKey) ?? 3;
+    if ( o === null ) return false;
+    return compare === "minSize" ? o >= k : o <= k;
+  }
+  const u = sizeRank(user?.system?.traits?.size);
+  if ( u === null || o === null ) return false;
+  const d = o - u, n = Math.max(1, Number(steps) || 1);
+  switch ( compare ) {
+    case "larger": return d >= n;
+    case "smaller": return -d >= n;
+    case "atLeast": return d >= 0;
+    case "atMost": return d <= 0;
+    case "same": return d === 0;
+    default: return true;
+  }
+}
+
 /** Hit point maximum, remembered from the last finished preparation (it is blank while effects apply). */
 const HP_MAX = new Map();
 function hpMax(actor) {
@@ -160,7 +210,8 @@ const log = (...args) => { if ( debug() ) console.log(`${MODULE_ID} |`, ...args)
 /** Does the rule use any creature / activity filter? */
 export function hasConditions(c) {
   return !!((c.sourceTypes?.length) || (c.targetTypes?.length) || c.sourceSubtype || c.targetSubtype
-    || (c.sourceStatuses?.length) || (c.targetStatuses?.length) || String(c.activityName ?? "").trim());
+    || (c.sourceStatuses?.length) || (c.targetStatuses?.length) || (c.sizeCompare && c.ruleCategory !== "healing")
+    || String(c.activityName ?? "").trim());
 }
 
 /** The item user's side of a rule ("source" or "target"), or null when neither side is the user. */
@@ -181,7 +232,7 @@ export function onlyUserStatuses(c) {
   if ( !side ) return false;
   const other = side === "source" ? "target" : "source";
   return !!c[`${side}Statuses`]?.length && !c[`${other}Statuses`]?.length && !c.sourceTypes?.length && !c.targetTypes?.length
-    && !c.sourceSubtype && !c.targetSubtype && !String(c.activityName ?? "").trim();
+    && !c.sourceSubtype && !c.targetSubtype && !c.sizeCompare && !String(c.activityName ?? "").trim();
 }
 
 /**
@@ -306,6 +357,10 @@ export function ruleFromComponent(c, itemType="", options={}) {
     targetSubtype: c.targetSubtype ?? "",
     sourceStatuses: [...(c.sourceStatuses ?? [])].map(x => String(x).toLowerCase()),
     targetStatuses: [...(c.targetStatuses ?? [])].map(x => String(x).toLowerCase()),
+    sizeCompare: c.ruleCategory === "healing" ? "" : (c.sizeCompare || ""),
+    sizeSteps: Number(c.sizeSteps) || 1,
+    sizeKey: c.sizeKey || "lg",
+    userSide: userSide(c) || "source",
     activityName: c.activityName ?? "",
     targetTypes: [...(c.targetTypes ?? [])].map(x => String(x).toLowerCase()),
     damageTypes: (DEFENSIVE_DAMAGE_RULES.has(c.effect) || OFFENSIVE_DAMAGE_RULES.has(c.effect) || c.effect === "sameTypeDamage")
@@ -540,6 +595,17 @@ function advantageRuleShape(c) {
  * D&D5e puts current conditions in roll data as `statuses`; Bloodied is worked out from hit points.
  * Raging has no roll-data form, so it returns null and the rule stays with Item Builder's own hooks.
  */
+function sizeExpr(compare, steps, otherRoot, sizeKey="lg") {
+  const table = `({ tiny: 0, sm: 1, med: 2, lg: 3, huge: 4, grg: 5 })`;
+  if ( compare === "minSize" || compare === "maxSize" ) {
+    const k = { tiny: 0, sm: 1, med: 2, lg: 3, huge: 4, grg: 5 }[sizeKey] ?? 3;
+    return `${table}[${otherRoot}?.traits?.size] ${compare === "minSize" ? ">=" : "<="} ${k}`;
+  }
+  const d = `(${table}[${otherRoot}?.traits?.size] - ${table}[actor?.traits?.size])`;
+  const n = Math.max(1, Number(steps) || 1);
+  return { larger: `${d} >= ${n}`, smaller: `${d} <= -${n}`, atLeast: `${d} >= 0`, atMost: `${d} <= 0`, same: `${d} === 0` }[compare] ?? "true";
+}
+
 function statusExpr(ids, root) {
   const parts = [];
   for ( const raw of ids ?? [] ) {
@@ -561,6 +627,7 @@ export function midiCondition(c, { itemName="", ownUse=false }={}) {
   const shape = advantageRuleShape(c);
   if ( !shape ) return null;
   const parts = [];
+  const sizeCmp = c.ruleCategory === "healing" ? "" : (c.sizeCompare || "");
   const user = shape.user ?? {}, other = shape.other ?? {};
   if ( user.types?.length ) parts.push(typeIn(user.types, "actor?.details?.type?.value"));
   if ( user.subtype ) parts.push(subtypeHas(user.subtype, "actor"));
@@ -570,7 +637,7 @@ export function midiCondition(c, { itemName="", ownUse=false }={}) {
     parts.push(e);
   }
   if ( ["check", "skill", "initiative", "concentration"].includes(shape.roll) ) {
-    if ( other.types?.length || other.subtype || other.statuses?.length ) return "false"; // No other creature on a check.
+    if ( other.types?.length || other.subtype || other.statuses?.length || sizeCmp ) return "false"; // No other creature on a check.
   } else if ( shape.roll === "save" ) {
     if ( other.types?.length ) parts.push(typeIn(other.types, CASTER_TYPE));
     if ( other.subtype ) parts.push(subtypeHas(other.subtype, CASTER_ROOT));
@@ -579,6 +646,7 @@ export function midiCondition(c, { itemName="", ownUse=false }={}) {
       if ( e === null ) return "false";
       parts.push(e);
     }
+    if ( sizeCmp ) parts.push(sizeExpr(sizeCmp, c.sizeSteps, `(workflow ? target : (item ? ({ traits: traits }) : undefined))`, c.sizeKey));
   } else {
     if ( other.types?.length ) parts.push(typeIn(other.types, "raceOrType"));
     if ( other.subtype ) parts.push(subtypeHas(other.subtype, "target"));
@@ -587,6 +655,7 @@ export function midiCondition(c, { itemName="", ownUse=false }={}) {
       if ( e === null ) return "false";
       parts.push(e);
     }
+    if ( sizeCmp ) parts.push(sizeExpr(sizeCmp, c.sizeSteps, "target", c.sizeKey));
   }
   const activity = String(c.activityName ?? "").trim();
   if ( activity ) parts.push(`${lower("workflow?.activity?.name || workflow?.item?.name")}.includes(${js(activity.toLowerCase())})`);
@@ -854,6 +923,12 @@ export function match(rule, { sourceActor, targetActor, activityName="", activit
   // Conditions: any one of the checked conditions is enough. Unknown creature fails closed.
   if ( rule.sourceStatuses?.length && !(sourceActor && actorHasAnyStatus(sourceActor, rule.sourceStatuses)) ) return false;
   if ( rule.targetStatuses?.length && !(targetActor && actorHasAnyStatus(targetActor, rule.targetStatuses)) ) return false;
+  // Size: the other creature compared with the item user. Unknown sizes fail closed.
+  if ( rule.sizeCompare ) {
+    const userIsTarget = rule.userSide === "target";
+    const user = userIsTarget ? targetActor : sourceActor, other = userIsTarget ? sourceActor : targetActor;
+    if ( !sizeMatches(rule.sizeCompare, rule.sizeSteps, user, other, rule.sizeKey) ) return false;
+  }
   return true;
 }
 
