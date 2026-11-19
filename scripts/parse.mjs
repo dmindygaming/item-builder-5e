@@ -1170,7 +1170,8 @@ export function parseDescription(text, ctx={}) {
       findings.push(...found);
       // A sentence can be part automated: "…, and you can breathe water." Clauses with a rule in them
       // that nothing above turned into a component are kept as Rules Text.
-      if ( !ctx._clause && found.some(f => f.component) ) {
+      // A recharge uses the whole sentence (when, how often and what), so none of it is left over.
+      if ( !ctx._clause && found.some(f => f.component) && !found.some(f => f.component?.type === "recharge") ) {
         const clauses = original.split(/;\s*|,\s*(?:and\s+)?(?=(?:you|it|its|the|while|when|on a|once|as|if|this|creatures?|targets?|allies)\b)|\s+and\s+(?=(?:you|it|its|the wielder|the wearer|the target)\b)/i)
           .map(c => c.trim()).filter(c => c.split(/\s+/).length >= 4);
         if ( clauses.length > 1 ) for ( const c of clauses ) {
