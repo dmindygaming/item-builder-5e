@@ -2,6 +2,19 @@
 
 All notable changes to Item Builder 5e.
 
+## v1.2.0 Recharging class abilities, and size checks
+
+- **Recharge** (new component, under Actions): restores uses of the holder's class abilities, such as Channel Divinity, Wild Shape, Rage, Bardic Inspiration, Action Surge, Second Wind, Lay on Hands, Focus Points or Sorcery Points, or an expended spell slot up to a level you pick.
+  - What it restores: a named ability, the player's choice of any limited-use ability, or a spell slot. Focus Points, Ki, Sorcery Points and Superiority Dice find the feature that tracks them.
+  - How much: a number or formula (1, 2, 1d4, @prof), or all expended uses. Optionally only when no uses are left.
+  - How it happens: as an action, bonus action or reaction (a D&D5e activity on the sheet); when you finish a short rest, a long rest or either; at dawn; when you roll initiative; at the start of each of your turns; or when you score a critical hit (optionally only with this item). The automatic ones post a chat message saying what was regained.
+  - Limits such as "once per long rest" or "a number of times equal to your proficiency bonus" are tracked as the activity's own uses, for the automatic ones too. Nothing to regain means nothing happens and no use is spent.
+- **Size** on every Offensive, Defensive and Utility rule (under Only when…): the other creature compared with the item user's current size: larger or smaller (optionally by at least 2, 3 or 4 sizes), your size or larger/smaller, the same size, or a fixed size such as Large or larger. Checked at roll time and written into Midi-QOL's conditions when it's installed.
+- **Describe It** reads both:
+  - Recharges: "once per long rest, as a bonus action, you can regain one expended use of Channel Divinity", "when you roll initiative and have no uses of Bardic Inspiration left, you regain one use", "regain one expended spell slot of 3rd level or lower", "regain 1d4 Focus Points", "recharges Action Surge when you roll initiative". It also takes the limit from the next sentence ("Once used, it can't be used again until dawn.").
+  - Sizes: "against creatures larger than you", "at least two sizes larger than you", "smaller creatures", "Large or larger creatures".
+- "Two sizes larger than you" is no longer read as the item making you grow.
+
 ## v1.1.9 Conditions on every rule
 
 - **Has a Condition**: every Offensive, Defensive, Healing and Utility rule card has two new lists under **Only when…**: conditions the item's user must have, and conditions the other creature must have. Any D&D5e condition (Prone, Frightened, Grappled, Restrained, Invisible, Poisoned…) is offered, plus Bloodied (at or below half hit points), Concentrating and Raging. Checking several means any one of them is enough. Examples:
