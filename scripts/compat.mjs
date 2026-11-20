@@ -260,6 +260,34 @@ export function rollModeKeys(target, { ability="", skill="" }={}) {
   }
 }
 
+/**
+ * Active Effect keys that add a bonus (a number or dice, positive or negative) to a kind of roll.
+ * D&D5e 6.0 moved the `bonuses.*` fields to `rolls.*` / `*.roll.bonus`; 5.3 keeps the old paths.
+ * @param {"attack"|"damage"|"save"|"check"|"skill"|"initiative"|"concentration"} target
+ * @param {object} [options]
+ * @param {string} [options.ability]  Limit saves / checks to one ability.
+ * @param {string} [options.skill]    Limit skill checks to one skill.
+ * @returns {string[]}
+ */
+export function rollBonusKeys(target, { ability="", skill="" }={}) {
+  const d6 = isDnd5e6();
+  const kinds = ["mwak", "rwak", "msak", "rsak"];
+  switch ( target ) {
+    case "attack": return d6 ? ["system.rolls.attack.bonus"] : kinds.map(t => `system.bonuses.${t}.attack`);
+    case "damage": return kinds.map(t => d6 ? `system.rolls.damage.${t}.bonus` : `system.bonuses.${t}.damage`);
+    case "save": return [saveBonusKey(ability)];
+    case "check":
+      if ( ability ) return [d6 ? `system.abilities.${ability}.check.roll.bonus` : `system.abilities.${ability}.bonuses.check`];
+      return [d6 ? "system.rolls.ability.check.bonus" : "system.bonuses.abilities.check"];
+    case "skill":
+      if ( skill ) return [d6 ? `system.skills.${skill}.roll.bonus` : `system.skills.${skill}.bonuses.check`];
+      return [d6 ? "system.rolls.ability.skill.bonus" : "system.bonuses.abilities.skill"];
+    case "initiative": return [initiativeBonusKey()];
+    case "concentration": return [d6 ? "system.attributes.concentration.roll.bonus" : "system.attributes.concentration.bonuses.save"];
+    default: return [];
+  }
+}
+
 /** Initiative bonus field: `init.roll.bonus` in D&D5e 6, `init.bonus` in 5.3. */
 export function initiativeBonusKey() {
   return isDnd5e6() ? "system.attributes.init.roll.bonus" : "system.attributes.init.bonus";

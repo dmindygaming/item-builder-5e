@@ -346,6 +346,7 @@ export function parseDescription(text, ctx={}) {
     // "Your spell save DC and spell attack bonus each increase by 2"
     .replace(/\byour ((?:spell save dc|spell attack bonus|ac|armor class))(?: and (?:your )?(spell save dc|spell attack bonus|ac|armor class))? (?:each |both )?(?:increases?|improves?) by (\d+)/g, (_m, a, b, n) =>
       [a, b].filter(Boolean).map(x => `+${n} bonus to ${x.replace("spell attack bonus", "spell attack rolls")}`).join(", and "));
+  let boostCarry = false;  // the previous sentence offered a limited-use boost
   let statCarry = false;   // inside an object's or creature's statistics, which can run over several sentences
   for ( const { text: original, tier } of list ) {
     const s = expandBonuses(norm(original));
@@ -929,6 +930,70 @@ export function parseDescription(text, ctx={}) {
           const abName = ab ? `${cap(T.abilities.find(([k]) => k === ab)[1])} ` : "";
           add(`${Kind} on ${abName}ability checks`, { type: "utility", effect: kind, name: `${Kind}: Checks`, rollTarget: "check", ability: ab });
         }
+      }
+    }
+
+    // --- Dice added to or taken from rolls (Bless / Bane style) ---
+    // "you can add 1d4 to your attack rolls", "+1d4 to saving throws", "creatures that attack you subtract 1d4
+    // from their attack rolls", "creatures making saving throws against your spells subtract 1d4", "the target
+    // subtracts 1d4 from its next saving throw", "damage you take from attacks is reduced by 1d4".
+    // Limited-use boosts ("you can expend a use of Second Wind to add 1d10", "when you fail a check, you can
+    // use this feature to add 1d10") are a choice made at the table, not a standing bonus.
+    const optionalBoost = /\b(?:expend|use this (?:feature|ability|trait|power)|use (?:your|a) reaction|as a reaction|when you fail|fails? (?:a|an|the) (?:saving throw|check|attack)|after (?:you )?(?:see|roll|make)|before (?:you|the dm)|times equal|once (?:per|before|within|on each)|uses? of|inspiration die|superiority die|until the end of (?:your|its) (?:next )?turn|rather than|potentially|still fails?)\b/.test(s)
+      || (boostCarry && /\b(?:the|that|this) (?:check|roll|saving throw|attack roll)\b/.test(s));
+    boostCarry = optionalBoost;
+    if ( !requirementSentence && !statBlock && !optionalBoost && /\d*d\d+/.test(s) ) {
+      const DICE = "(\\d*d\\d+(?:\\s*[+-]\\s*\\d+)?)";
+      const rollOf = p => /\binitiative\b/.test(p) ? "initiative" : /\bconcentration\b/.test(p) ? "concentration"
+        : /\bdamage\b/.test(p) ? "damage" : /\battack/.test(p) ? "attack" : skillsIn(p, T).length ? "skill"
+        : /\bsaving throws?\b|\bsaves?\b/.test(p) ? "save" : /\b(?:ability )?checks?\b/.test(p) ? "check" : "";
+      const mods = [];
+      const verbRe = new RegExp(`\\b(add|adds|subtract|subtracts|deduct|deducts|roll|rolls)\\s+(?:a |an |one )?${DICE}(?:\\s+and\\s+(add|adds|subtract|subtracts|deduct|deducts)\\s+the\\s+(?:number|result)(?:\\s+rolled)?)?\\s+(to|from)\\s+(?:your |its |their |the |one |any |an? |each |all )*([^.;]+?)(?=[.;]|,\\s*(?:and\\s+)?(?:you|it|the|while|but)\\b|$)`, "g");
+      for ( const m of s.matchAll(verbRe) ) {
+        const sub = /subtract|deduct/.test(m[1] + " " + (m[3] ?? "")) || m[4] === "from";
+        mods.push({ index: m.index, dice: m[2].replace(/\s+/g, ""), subtract: sub, roll: m[5], before: s.slice(Math.max(0, m.index - 90), m.index) });
+      }
+      const signRe = new RegExp(`(?:^|[^\\w])([+-])\\s*${DICE}\\s*(?:bonus |penalty )?(?:to|on)\\s+(?:your |its |their |the |all )*([^.;,]+?)(?=[.;,]|\\s+and\\s+(?:you|it)\\b|$)`, "g");
+      for ( const m of s.matchAll(signRe) ) mods.push({ index: m.index, dice: m[2].replace(/\s+/g, ""), subtract: m[1] === "-", roll: m[3], before: s.slice(Math.max(0, m.index - 90), m.index) });
+      const wordRe = new RegExp(`\\b(?:a|an)\\s+${DICE}\\s+(bonus|penalty)\\s+(?:to|on)\\s+(?:your |its |their |the |all )*([^.;,]+?)(?=[.;,]|$)`, "g");
+      for ( const m of s.matchAll(wordRe) ) mods.push({ index: m.index, dice: m[1].replace(/\s+/g, ""), subtract: m[2] === "penalty", roll: m[3], before: s.slice(Math.max(0, m.index - 90), m.index) });
+      const reduced = s.match(new RegExp(`\\bdamage (?:you take|taken|dealt to you)[^.;]*?\\b(?:is |are )?(reduced|increased) by ${DICE}`));
+      if ( reduced ) mods.push({ index: reduced.index, dice: reduced[2].replace(/\s+/g, ""), subtract: reduced[1] === "reduced", roll: "damage", who: "attackers", before: "" });
+      const seen = new Set();
+      for ( const mod of mods ) {
+        const leadClause = mod.before.split(/[.;]/).at(-1) ?? "";
+        // "…saving throws against your spells subtract 1d4 from the roll": the roll is named earlier.
+        const rollText = rollOf(mod.roll) ? mod.roll : `${mod.roll} ${leadClause}`;
+        const roll = mod.who === "attackers" ? "damage" : rollOf(rollText);
+        if ( !roll ) continue;
+        // "Extra damage" belongs to the damage parser: only "subtract … from damage" is a penalty here.
+        if ( roll === "damage" && !mod.subtract && !mod.who ) continue;
+        if ( /\bregain|\bhit points?\b|\bhit dice\b|\bheal/.test(rollText) ) continue;
+        const lead = mod.before;
+        let who = mod.who ?? "self";
+        if ( !mod.who ) {
+          if ( /\bagainst (?:your|the wearer's|the wielder's) (?:spells?|abilities|effects|features)/.test(rollText) || /\bcreatures?\b[^.;]{0,40}\b(?:mak(?:e|es|ing)|roll(?:s|ing)?)\s+(?:a\s+)?saving throws? against (?:you|your)\b[^.;]*$/.test(lead) ) who = "savers";
+          else if ( /\b(?:creatures?|attackers?|enem(?:y|ies)|foes?)\b[^.;]{0,30}\b(?:attack(?:s|ing)?|hit(?:s|ting)?|target(?:s|ing)?) you\b[^.;]*$|\battack rolls? (?:made )?against you\b[^.;]*$/.test(lead) || /\bagainst you\b/.test(rollText) ) who = "attackers";
+          else if ( /\b(?:the|a|that|one|each) (?:target|creature)\b[^.;]{0,40}$|\bit\s+(?:must\s+)?$/.test(lead) && !/\byou\b[^.;]{0,15}$/.test(lead) ) who = "target";
+        }
+        if ( who === "savers" && roll !== "save" ) continue;
+        if ( who === "attackers" && !["attack", "damage"].includes(roll) ) continue;
+        if ( who === "self" && roll === "damage" && !mod.subtract ) continue;
+        const ab = ["save", "check"].includes(roll) ? (abilityIn(mod.roll, T) || (/\bsaving throws?\b|\bchecks?\b/.test(leadClause.split(/,/).at(0)) ? abilityIn(leadClause.split(/,/).at(0), T) : "")) : "";
+        const sk = roll === "skill" ? skillsIn(rollText, T)[0] ?? "" : "";
+        const once = who === "target" && /\bnext\b/.test(rollText);
+        const key = `${who}|${roll}|${ab}|${sk}|${mod.dice}|${mod.subtract}`;
+        if ( seen.has(key) ) continue;
+        seen.add(key);
+        // Creature filters: "fiends that attack you", "undead making saves against your spells".
+        const types = who === "self" || who === "target" ? [] : creaturesIn(lead.split(/[.;]/).at(-1) ?? "", T);
+        const rollName = { attack: "Attack Rolls", damage: who === "attackers" ? "Damage Taken" : "Damage Rolls", save: "Saving Throws", check: "Ability Checks", skill: "Skill Checks", initiative: "Initiative", concentration: "Concentration" }[roll];
+        const label = { self: `${mod.subtract ? "Subtract" : "Add"} ${mod.dice} ${mod.subtract ? "from" : "to"} your ${rollName.toLowerCase()}`,
+          attackers: roll === "damage" ? `Damage you take from attacks ${mod.subtract ? "reduced" : "increased"} by ${mod.dice}` : `Creatures attacking you ${mod.subtract ? "subtract" : "add"} ${mod.dice}`,
+          savers: `Creatures saving against you ${mod.subtract ? "subtract" : "add"} ${mod.dice}`,
+          target: `Target ${mod.subtract ? "subtracts" : "adds"} ${mod.dice} ${mod.subtract ? "from" : "to"} ${once ? "its next" : "its"} ${rollName.toLowerCase()}` }[who];
+        add(label, { type: "utility", effect: "rollModifier", name: `${mod.subtract ? "-" : "+"}${mod.dice} ${rollName}`, formula: mod.dice, modSign: mod.subtract ? "subtract" : "add",
+          rollWho: who, rollTarget: roll, ability: ab, skill: sk, oneRoll: once, ...(types.length ? { targetTypes: types } : {}) });
       }
     }
 

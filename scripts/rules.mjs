@@ -15,7 +15,7 @@
  */
 
 import {
-  MODE_TO_TYPE, MODULE_ID, isDnd5e6, movementKey, resolveUuidSync, rollModeKeys, saveBonusKey, statusEffectList,
+  MODE_TO_TYPE, MODULE_ID, isDnd5e6, movementKey, resolveUuidSync, rollBonusKeys, rollModeKeys, saveBonusKey, statusEffectList,
   withEffectChanges
 } from "./compat.mjs";
 
@@ -27,9 +27,9 @@ export const RULE_CATEGORIES = {
   offensive: { label: "Offensive Effect", icon: "fa-burst", effects: { extraDamage: "Extra Damage", sameTypeDamage: "Additional Same-Type Damage", attackBonus: "Attack Bonus", attackAdvantage: "Attack Advantage", reachBonus: "Increase Reach", ignoreHalfCover: "Ignore Half Cover", ignoreThreeQuartersCover: "Ignore Three-Quarters Cover", ignoreAllCover: "Ignore All Cover", ignoreResistance: "Ignore Damage Resistance", ignoreImmunity: "Ignore Damage Immunity", ignoreResistanceImmunity: "Ignore Resistance & Immunity", causeVulnerability: "Cause Damage Vulnerability" } },
   defensive: { label: "Defensive Effect", icon: "fa-shield-halved", effects: { resistance: "Resistance", immunity: "Immunity", vulnerability: "Vulnerability", acBonus: "AC Bonus", saveBonus: "Saving Throw Bonus", saveAdvantage: "Saving Throw Advantage" } },
   healing: { label: "Healing / Recovery Effect", icon: "fa-heart-pulse", effects: { bonusHealing: "Bonus Healing", healingReceived: "Healing Received Modifier", temporaryHp: "Temporary HP", recoveryBonus: "Recovery Roll Bonus" } },
-  utility: { label: "Utility / Control Effect", icon: "fa-wand-magic-sparkles", effects: { movementControl: "Movement / Control", sizeChange: "Change Size", statusEffect: "Status / Condition", advantage: "Advantage", disadvantage: "Disadvantage", activeEffect: "Apply Active Effect" } }
+  utility: { label: "Utility / Control Effect", icon: "fa-wand-magic-sparkles", effects: { movementControl: "Movement / Control", sizeChange: "Change Size", statusEffect: "Status / Condition", advantage: "Advantage", disadvantage: "Disadvantage", rollModifier: "Roll Bonus / Penalty (Dice)", activeEffect: "Apply Active Effect" } }
 };
-export const FORMULA_RULES = new Set(["extraDamage", "sameTypeDamage", "attackBonus", "reachBonus", "acBonus", "saveBonus", "bonusHealing", "healingReceived", "temporaryHp", "recoveryBonus", "movementControl"]);
+export const FORMULA_RULES = new Set(["extraDamage", "sameTypeDamage", "attackBonus", "reachBonus", "acBonus", "saveBonus", "bonusHealing", "healingReceived", "temporaryHp", "recoveryBonus", "movementControl", "rollModifier"]);
 export const DAMAGE_RULES = new Set(["extraDamage", "sameTypeDamage", "resistance", "immunity", "vulnerability", "ignoreResistance", "ignoreImmunity", "ignoreResistanceImmunity", "causeVulnerability"]);
 export const OFFENSIVE_DAMAGE_RULES = new Set(["ignoreResistance", "ignoreImmunity", "ignoreResistanceImmunity", "causeVulnerability"]);
 export const DEFENSIVE_DAMAGE_RULES = new Set(["resistance", "immunity", "vulnerability"]);
@@ -162,6 +162,47 @@ export function sizeAfter(base, steps) {
   return keys[Math.min(keys.length - 1, Math.max(0, i + (Number(steps) || 0)))];
 }
 export const ROLL_TARGETS = { attack: "Attack Rolls", save: "Saving Throws", check: "Ability Checks", skill: "Skill Checks", initiative: "Initiative", concentration: "Concentration Saves" };
+/** Rolls a Roll Bonus / Penalty can change. */
+export const MOD_ROLL_TARGETS = { attack: "Attack Rolls", damage: "Damage Rolls", save: "Saving Throws", check: "Ability Checks (including skills)", skill: "Skill Checks", initiative: "Initiative", concentration: "Concentration Saves" };
+/** Whose rolls a Roll Bonus / Penalty changes. */
+export const MOD_WHO = {
+  self: "The item user's own rolls",
+  attackers: "Creatures attacking the item user",
+  savers: "Creatures making saves against the item user",
+  target: "The target (apply from the chat card)"
+};
+/** The rolls each "whose rolls" choice can change. */
+export function modRollTargets(who) {
+  if ( who === "attackers" ) return { attack: MOD_ROLL_TARGETS.attack, damage: "Damage Rolls (reduces the damage you take)" };
+  if ( who === "savers" ) return { save: MOD_ROLL_TARGETS.save };
+  return MOD_ROLL_TARGETS;
+}
+/** A Roll Bonus / Penalty's roll, made valid for its "whose rolls" choice. */
+export function modRollTarget(c) {
+  const allowed = modRollTargets(c.rollWho || "self");
+  const t = c.rollTarget || "attack";
+  return t in allowed ? t : Object.keys(allowed)[0];
+}
+/**
+ * The dice / number of a Roll Bonus / Penalty and whether it subtracts. "-1d4" typed into the
+ * formula counts as subtracting, whatever the Add / Subtract choice says.
+ * @returns {{dice: string, subtract: boolean}}
+ */
+export function modParts(c) {
+  let dice = String(c.formula ?? "").trim();
+  let subtract = c.modSign === "subtract";
+  const m = dice.match(/^-\s*(.+)$/);
+  if ( m ) { dice = m[1].trim(); subtract = true; }
+  dice = dice.replace(/^\+\s*/, "");
+  return { dice, subtract };
+}
+/** "1d4" -> "1d4" or "-1d4"; "1d4 + 1" -> "-(1d4 + 1)". Blank when there is nothing to add. */
+export function signedModFormula(c) {
+  const { dice, subtract } = modParts(c);
+  if ( !dice ) return "";
+  if ( !subtract ) return dice;
+  return /^[\w@.]+$/.test(dice) ? `-${dice}` : `-(${dice})`;
+}
 export const STATUS_TARGETS = { self: "The item user, while the item is active", target: "The target (apply from the chat card)" };
 export const RULE_PARTICIPANT_LABELS = {
   offensive: { source: "Attacker / Item User", target: "Target" },
@@ -175,6 +216,15 @@ export function participantLabels(c) {
   const effect = c.effect;
   if ( ["saveBonus", "saveAdvantage"].includes(effect) ) return { source: "Creature Causing the Save", target: "Item User (Making the Save)" };
   if ( effect === "acBonus" ) return { source: "Attacker", target: "Item User (Defender)" };
+  if ( effect === "rollModifier" ) {
+    const who = c.rollWho || "self", rt = modRollTarget(c);
+    if ( who === "attackers" ) return { source: "Item User (Being Attacked)", target: "Attacker" };
+    if ( who === "savers" ) return { source: "Item User (Causing the Save)", target: "Creature Making the Save" };
+    if ( who === "target" ) return { source: "Item User", target: "Target" };
+    if ( ["attack", "damage"].includes(rt) ) return { source: "Item User (Attacker)", target: "Target" };
+    if ( rt === "save" ) return { source: "Item User (Making the Save)", target: "Creature Causing the Save" };
+    return { source: "Item User", target: "Other Creature (unused for checks)" };
+  }
   if ( ["advantage", "disadvantage"].includes(effect) ) {
     const rt = c.rollTarget || "attack";
     if ( rt === "attack" ) return { source: "Item User (Attacker)", target: "Target" };
@@ -321,6 +371,22 @@ export function ruleHandling(c, itemType="", { ownUse=defaultOwnUse(itemType) }=
       if ( !conditional ) return { mode: "native", note: `Built in on the item user's ${ROLL_TARGETS[target].toLowerCase()}.` };
       return { mode: "runtime", note: auto };
     }
+    case "rollModifier": {
+      const who = c.rollWho || "self", rt = modRollTarget(c);
+      const { subtract } = modParts(c);
+      const verb = subtract ? "penalty" : "bonus";
+      if ( !String(c.formula ?? "").trim() ) return { mode: "reference", note: "Enter the dice (such as 1d4) to automate this." };
+      if ( who === "target" ) return { mode: "native", note: `Built in as an Apply Effect button on the item's attack, save and damage cards: the target gets the ${verb}${c.oneRoll ? " on its next matching roll, then the effect ends" : " for the effect's duration"}.`, ignoresConditions: conditional };
+      if ( who === "attackers" ) return { mode: "runtime", note: rt === "damage"
+        ? "Applied automatically by Item Builder when an attacker's damage is applied to the item user (never below 0)."
+        : `Applied automatically by Item Builder to the attack rolls of creatures that target the item user.` };
+      if ( who === "savers" ) return { mode: "runtime", note: "Applied automatically by Item Builder to saving throws made against the item user's spells and abilities." };
+      if ( ["initiative", "concentration"].includes(rt) ) return { mode: "native", note: `Built in as a ${verb} on the item user's ${MOD_ROLL_TARGETS[rt].toLowerCase()} rolls.`, ignoresConditions: conditional && !onlyUserStatuses(c) };
+      if ( ownUse && rt === "attack" && !conditional ) return { mode: "native", note: `Built into this item's attack activities as a ${verb}.` };
+      if ( ownUse && rt === "damage" ) return { mode: "runtime", note: `Applied automatically by Item Builder to this item's damage rolls.` };
+      if ( !conditional || onlyUserStatuses(c) ) return { mode: "native", note: `Built in as a ${verb} on the item user's ${MOD_ROLL_TARGETS[rt].toLowerCase().replace(/ \(.*\)/, "")}.` };
+      return { mode: "runtime", note: auto };
+    }
     case "activeEffect":
       return c.activeEffectKey
         ? { mode: "native", note: "Built in as an Active Effect.", ignoresConditions: conditional && !onlyUserStatuses(c) }
@@ -372,8 +438,12 @@ export function ruleFromComponent(c, itemType="", options={}) {
     canCrit: !!c.canCrit,
     ability: c.ability || "",
     skill: c.skill || "",
-    rollTarget: c.rollTarget || "attack",
+    rollTarget: c.effect === "rollModifier" ? modRollTarget(c) : (c.rollTarget || "attack"),
     appliesTo: c.appliesTo || "self",
+    rollWho: c.effect === "rollModifier" ? (c.rollWho || "self") : "",
+    modSign: c.effect === "rollModifier" ? (modParts(c).subtract ? "subtract" : "add") : "",
+    modFormula: c.effect === "rollModifier" ? signedModFormula(c) : "",
+    oneRoll: c.effect === "rollModifier" && !!c.oneRoll,
     status: c.status || "",
     activeEffectKey: c.activeEffectKey || "",
     activeEffectMode: c.activeEffectMode || "2",
@@ -464,6 +534,12 @@ export function nativeChanges(c, itemType="", { ownUse=defaultOwnUse(itemType), 
     }
     case "movementControl":
       return formula ? [{ key: movementKey(c.ability || "walk"), type: "add", value: formula, priority: 20 }] : [];
+    case "rollModifier": {
+      if ( (c.rollWho || "self") !== "self" ) return [];
+      const value = signedModFormula(c), rt = modRollTarget(c);
+      if ( !value || (ownUse && ["attack", "damage"].includes(rt)) ) return [];
+      return rollBonusKeys(rt, { ability: c.ability, skill: c.skill }).map(key => ({ key, type: "add", value, priority: 20 }));
+    }
     case "activeEffect":
       return c.activeEffectKey ? [{
         key: String(c.activeEffectKey).trim(),
@@ -488,6 +564,9 @@ export function nativeActivityPatches(c, itemType="", { ownUse=defaultOwnUse(ite
   switch ( c.effect ) {
     case "extraDamage": return [{ kind: "damagePart", formula, type: c.damageType }];
     case "attackBonus": return [{ kind: "attackBonus", formula }];
+    case "rollModifier":
+      return (c.rollWho || "self") === "self" && modRollTarget(c) === "attack" && signedModFormula(c)
+        ? [{ kind: "attackBonus", formula: signedModFormula(c) }] : [];
     case "bonusHealing": return [{ kind: "healingBonus", formula }];
     default: return [];
   }
@@ -522,6 +601,21 @@ export function ruleEffectData(c, { itemName, itemType, activeTier, ownUse=defau
       return withEffectChanges({ name: `${c.name || info.name}`, img: info.img, transfer: false, disabled: false, statuses: [c.status], flags }, []);
     }
     return withEffectChanges({ name: `${itemName}: ${c.name || info.name}`, img: info.img, transfer: true, disabled: minTier > activeTier, statuses: [c.status], flags }, []);
+  }
+
+  // Roll Bonus / Penalty on the target: an effect applied from the chat card (like Bane).
+  if ( c.effect === "rollModifier" && c.rollWho === "target" ) {
+    const value = signedModFormula(c), rt = modRollTarget(c);
+    if ( !value ) return null;
+    flags[MODULE_ID].statusTarget = true;
+    delete flags[MODULE_ID].userStatuses;
+    if ( c.oneRoll ) flags[MODULE_ID].oneRoll = { roll: rt, ability: c.ability || "", skill: c.skill || "" };
+    const { subtract } = modParts(c);
+    return withEffectChanges({
+      name: c.name || `${itemName}: ${subtract ? "Penalty" : "Bonus"} to ${MOD_ROLL_TARGETS[rt].replace(/ \(.*\)/, "")}`,
+      img: subtract ? "icons/svg/downgrade.svg" : "icons/svg/upgrade.svg",
+      transfer: false, disabled: false, flags
+    }, rollBonusKeys(rt, { ability: c.ability, skill: c.skill }).map(key => ({ key, type: "add", value, priority: 20 })));
   }
 
   const changes = nativeChanges(c, itemType, { ownUse, itemName, baseSize });
@@ -1023,6 +1117,45 @@ function actionTypeOf(activity, attackMode) {
   return String(activity?.type ?? "").toLowerCase();
 }
 
+/** Is this stored rule a Roll Bonus / Penalty on these rolls? */
+function isMod(rule, who, roll) {
+  return rule?.effect === "rollModifier" && (rule.rollWho || "self") === who && rule.rollTarget === roll && !!String(rule.modFormula ?? "").trim();
+}
+
+/**
+ * "The target subtracts 1d4 from its next saving throw": once the creature has made a roll the
+ * effect changed, the effect ends. Runs on the client that made the roll.
+ */
+function consumeOneRoll(actor, kind, { ability="", skill="" }={}) {
+  if ( !actor?.isOwner ) return;
+  const done = [];
+  for ( const effect of actor.effects ?? [] ) {
+    const once = effect.flags?.[MODULE_ID]?.oneRoll;
+    if ( !once || effect.disabled ) continue;
+    let hit = false;
+    switch ( once.roll ) {
+      case "check": hit = ["check", "skill"].includes(kind) && (!once.ability || once.ability === ability); break;
+      case "skill": hit = kind === "skill" && (!once.skill || once.skill === skill); break;
+      case "save": hit = kind === "save" && (!once.ability || once.ability === ability); break;
+      default: hit = once.roll === kind;
+    }
+    if ( hit ) done.push(effect.id);
+  }
+  if ( done.length ) actor.deleteEmbeddedDocuments("ActiveEffect", done).catch(err => console.error(`${MODULE_ID} | next-roll effect`, err));
+}
+
+function registerOneRollHooks() {
+  const actorOf = s => (s?.documentName === "Actor" ? s : s?.item?.actor ?? s?.actor ?? null);
+  Hooks.on("dnd5e.rollAttack", (rolls, data) => consumeOneRoll(actorOf(data?.subject), "attack"));
+  Hooks.on("dnd5e.rollDamage", (rolls, data) => consumeOneRoll(actorOf(data?.subject), "damage"));
+  Hooks.on("dnd5e.rollSavingThrow", (rolls, data) => consumeOneRoll(actorOf(data?.subject), "save", { ability: String(data?.ability ?? "") }));
+  Hooks.on("dnd5e.rollConcentration", (rolls, data) => consumeOneRoll(actorOf(data?.subject), "concentration"));
+  Hooks.on("dnd5e.rollAbilityCheck", (rolls, data) => { if ( !data?.skill && !data?.tool ) consumeOneRoll(actorOf(data?.subject), "check", { ability: String(data?.ability ?? "") }); });
+  Hooks.on("dnd5e.rollSkill", (rolls, data) => consumeOneRoll(actorOf(data?.subject), "skill", { ability: String(data?.ability ?? ""), skill: String(data?.skill ?? "") }));
+  Hooks.on("dnd5e.rollToolCheck", (rolls, data) => consumeOneRoll(actorOf(data?.subject), "check", { ability: String(data?.ability ?? "") }));
+  Hooks.on("dnd5e.rollInitiative", actor => consumeOneRoll(actor, "initiative"));
+}
+
 function firstRoll(config) {
   if ( !Array.isArray(config.rolls) ) config.rolls = [];
   if ( !config.rolls.length ) config.rolls.push({ parts: [], data: {}, options: {} });
@@ -1417,6 +1550,7 @@ export function registerRuleHooks() {
   if ( registered ) return;
   registered = true;
   registerStatusGates();
+  registerOneRollHooks();
 
   // Only the base hook names are used: D&D5e fires both `preRollX` and `preRollXV2`
   // for every roll, and listening to both would apply bonuses twice.
@@ -1435,10 +1569,12 @@ export function registerRuleHooks() {
 
       for ( const rule of userRules(attacker, item) ) {
         const relevant = ["attackBonus", "attackAdvantage"].includes(rule.effect) || COVER_RULES[rule.effect]
-          || (rule.category === "utility" && ["advantage", "disadvantage"].includes(rule.effect) && rule.rollTarget === "attack");
+          || (rule.category === "utility" && ["advantage", "disadvantage"].includes(rule.effect) && rule.rollTarget === "attack")
+          || isMod(rule, "self", "attack");
         if ( !relevant ) continue;
         if ( !everyTarget(t => match(rule, { ...ctx, sourceActor: attacker, targetActor: t })) ) continue;
         if ( rule.effect === "attackBonus" && String(rule.formula).trim() ) roll.parts.push(`(${rule.formula})`);
+        else if ( rule.effect === "rollModifier" ) roll.parts.push(`(${rule.modFormula})`);
         else if ( rule.effect === "attackAdvantage" || rule.effect === "advantage" ) grants.advantage.push(rule.name || "Item Builder");
         else if ( rule.effect === "disadvantage" ) grants.disadvantage.push(rule.name || "Item Builder");
         else if ( COVER_RULES[rule.effect] ) coverCap = Math.max(coverCap, COVER_CAPS[COVER_RULES[rule.effect]]);
@@ -1464,6 +1600,14 @@ export function registerRuleHooks() {
           .reduce((sum, r) => sum + rollSync(r.formula, target.getRollData?.() ?? {}), 0));
         const penalty = Math.min(...penalties);
         if ( penalty ) roll.parts.push(String(-penalty));
+
+        // "Creatures that attack you subtract 1d4": dice on the attacker's roll, when every target has it.
+        const perTarget = targets.map(target => holderRules(target)
+          .filter(r => isMod(r, "attackers", "attack") && match({ ...r, trigger: "" }, { ...ctx, sourceActor: target, targetActor: attacker }))
+          .map(r => r.modFormula));
+        for ( const f of new Set(perTarget[0]) ) {
+          if ( perTarget.every(list => list.includes(f)) ) { roll.parts.push(`(${f})`); log("attacker roll modifier", f); }
+        }
       }
     } catch (err) { console.error(`${MODULE_ID} | preRollAttack`, err); }
   });
@@ -1482,7 +1626,13 @@ export function registerRuleHooks() {
       const data = source.getRollData?.() ?? {};
 
       for ( const rule of userRules(source, item) ) {
-        if ( !healing && ["extraDamage", "sameTypeDamage"].includes(rule.effect) ) {
+        if ( !healing && isMod(rule, "self", "damage") ) {
+          if ( !config.rolls.length || !everyTarget(t => match(rule, { ...ctx, sourceActor: source, targetActor: t })) ) continue;
+          const first = config.rolls[0];
+          first.parts ??= [];
+          first.parts.push(`(${rule.modFormula})`);
+          log("damage roll modifier", rule.name, rule.modFormula);
+        } else if ( !healing && ["extraDamage", "sameTypeDamage"].includes(rule.effect) ) {
           const matched = everyTarget(t => match(rule, { ...ctx, sourceActor: source, targetActor: t }));
           log("extra-damage", { rule: rule.name, matched, targets: targets.map(t => t.name), damageTypes });
           if ( !matched ) continue;
@@ -1603,6 +1753,30 @@ export function registerRuleHooks() {
         }
         log(`${rule.effect} applied`, rule.name, target.name);
       }
+
+      // "Damage you take from attackers is reduced by 1d4" (or increased): rolled once per card.
+      if ( ctx?.sourceActor ) {
+        const key = ctx.messageId ?? "nocard";
+        for ( const rule of holderRules(target) ) {
+          if ( !isMod(rule, "attackers", "damage") || !match({ ...rule, trigger: "" }, { ...matchContext, sourceActor: target, targetActor: ctx.sourceActor }) ) continue;
+          let delta = cachedRoll(`${key}|${target.uuid}|${rule.id}|mod`, rule.modFormula, target.getRollData?.() ?? {});
+          const hurt = (damages ?? []).filter(d => Number.isFinite(Number(d?.value)) && !isHealingType(String(d?.type ?? "").toLowerCase()) && Number(d.value) > 0);
+          if ( !hurt.length || !delta ) continue;
+          if ( delta > 0 ) hurt[0].value = Number(hurt[0].value) + delta;
+          else for ( const d of hurt ) {
+            const cut = Math.min(Number(d.value), -delta);
+            d.value = Number(d.value) - cut;
+            delta += cut;
+            if ( delta >= 0 ) break;
+          }
+          log("damage taken modifier", rule.name, target.name);
+        }
+      }
+
+      // A penalty on a damage roll can leave it below 0: damage never heals.
+      for ( const d of damages ?? [] ) {
+        if ( Number(d?.value) < 0 && !isHealingType(String(d?.type ?? "").toLowerCase()) ) d.value = 0;
+      }
     } catch (err) { console.error(`${MODULE_ID} | preCalculateDamage`, err); }
   });
 
@@ -1646,9 +1820,24 @@ export function registerRuleHooks() {
           if ( rule.effect === "saveAdvantage" ) grants.advantage.push(rule.name || "Item Builder");
           else if ( String(rule.formula).trim() ) roll.parts.push(`(${rule.formula})`);
           log("save rule applied", rule.name);
+        } else if ( isMod(rule, "self", "save") ) {
+          if ( !match({ ...rule, trigger: "" }, { sourceActor: ctx.actor, targetActor: ctx.sourceActor, activityName: ctx.activityName, activityType: "save", actionType: "save" }) ) continue;
+          roll.parts.push(`(${rule.modFormula})`);
+          decisions.push(`${rule.name}: APPLIED ${rule.modFormula}`);
         } else if ( rule.category === "utility" && ["advantage", "disadvantage"].includes(rule.effect) && rule.rollTarget === "save" ) {
           if ( !match({ ...rule, trigger: "" }, { sourceActor: ctx.actor, targetActor: ctx.sourceActor, activityName: ctx.activityName, activityType: "save", actionType: "save" }) ) continue;
           grants[rule.effect === "advantage" ? "advantage" : "disadvantage"].push(rule.name || "Item Builder");
+        }
+      }
+      // "Creatures making saves against you subtract 1d4": rules on the creature causing the save.
+      if ( ctx.sourceActor && ctx.sourceActor !== ctx.actor ) {
+        const casterRules = ctx.item?.actor === ctx.sourceActor ? userRules(ctx.sourceActor, ctx.item) : holderRules(ctx.sourceActor);
+        for ( const rule of casterRules ) {
+          if ( !isMod(rule, "savers", "save") ) continue;
+          if ( rule.ability && String(rule.ability).toLowerCase() !== ctx.ability ) continue;
+          if ( !match({ ...rule, trigger: "" }, { sourceActor: ctx.sourceActor, targetActor: ctx.actor, activityName: ctx.activityName, activityType: "save", actionType: "save" }) ) continue;
+          roll.parts.push(`(${rule.modFormula})`);
+          decisions.push(`${rule.name} (on ${ctx.sourceActor.name}): APPLIED ${rule.modFormula}`);
         }
       }
       applyRollModes(config, grants, dialog);
@@ -1664,10 +1853,16 @@ export function registerRuleHooks() {
     try {
       const actor = config.subject?.documentName === "Actor" ? config.subject : config.subject?.actor;
       if ( !actor ) return;
-      firstRoll(config);
+      const roll = firstRoll(config);
       const grants = newGrants();
       const skill = config.skill ?? "", tool = config.tool ?? "", ability = String(config.ability ?? "").toLowerCase();
       for ( const rule of holderRules(actor) ) {
+        if ( isMod(rule, "self", "check") || isMod(rule, "self", "skill") ) {
+          const applies = rule.rollTarget === "check" ? (!rule.ability || rule.ability === ability)
+            : (skill && (!rule.skill || rule.skill === skill));
+          if ( applies && match({ ...rule, trigger: "" }, { sourceActor: actor, targetActor: null }) ) roll.parts.push(`(${rule.modFormula})`);
+          continue;
+        }
         if ( rule.category !== "utility" || !["advantage", "disadvantage"].includes(rule.effect) ) continue;
         const applies = (rule.rollTarget === "check" && !skill && !tool && (!rule.ability || rule.ability === ability))
           || (rule.rollTarget === "skill" && skill && (!rule.skill || rule.skill === skill));

@@ -19,11 +19,11 @@ import { DEFAULT_BACKGROUND, applyBackgroundAdvancement, backgroundSettings, too
 import { FEAT_POOLS, FEAT_PACK_LABEL, applyFeatAdvancement, featGrantIsNative, publishFeat, publishesToPack, registerFeatHooks, sourceOfCopy, syncFeatGrants } from "./feats.mjs";
 import {
   DAMAGE_RULES, DEFENSIVE_TRIGGERS, FORMULA_RULES, OFFENSIVE_DAMAGE_RULES, ROLL_TARGETS, RULE_CATEGORIES,
-  STATUS_TARGETS, SIZE_COMPARE, SIZE_KEYS, statusChoices, handlingLabel, hasAutomationEffect, participantLabels, triggerOptions, match, registerRuleHooks, ruleDiagnostic,
+  STATUS_TARGETS, MOD_WHO, modRollTargets, modRollTarget, SIZE_COMPARE, SIZE_KEYS, statusChoices, handlingLabel, hasAutomationEffect, participantLabels, triggerOptions, match, registerRuleHooks, ruleDiagnostic,
   itemHasOwnUse, ruleFromComponent, sizeAfter, ruleHandling, syncRuleEffects
 } from "./rules.mjs";
 
-const MODULE_VERSION = "1.2.0";
+const MODULE_VERSION = "1.2.1";
 /** Returns every Fighting Style feat (cached), set up at init. */
 let fightingStyles = async () => [];
 /** Every feat (cached), set up at init. */
@@ -588,7 +588,7 @@ class ItemBuilder5e extends ApplicationV2 {
       this._capture();
       this.render({force:true});
     }));
-    el.querySelectorAll('select[name$=".rollTarget"],select[name$=".appliesTo"]').forEach(sel=>sel.addEventListener("change",()=>{this._capture();this.render({force:true});}));
+    el.querySelectorAll('select[name$=".rollTarget"],select[name$=".appliesTo"],select[name$=".rollWho"],select[name$=".modSign"]').forEach(sel=>sel.addEventListener("change",()=>{this._capture();this.render({force:true});}));
     el.querySelectorAll('select[name$=".reactionEffect"],select[name$=".trigger"],select[name$=".usesMode"],select[name$=".sizeMode"],select[name$=".requireKind"],select[name$=".penalty"],select[name$=".mode"],select[name$=".poolType"],select[name$=".bonusMode"],select[name$=".target"],select[name$=".sizeCompare"]').forEach(sel=>sel.addEventListener("change",()=>{this._capture();this.render({force:true});}));
     el.querySelectorAll('select[name$=".selectionMode"]').forEach(sel=>sel.addEventListener("change",()=>{this._capture();this.render({force:true});}));
 
@@ -773,6 +773,9 @@ class ItemBuilder5e extends ApplicationV2 {
         c.rollTarget=v(`c.${i}.rollTarget`)??c.rollTarget;
         c.skill=v(`c.${i}.skill`)??c.skill;
         c.appliesTo=v(`c.${i}.appliesTo`)??c.appliesTo;
+        c.rollWho=v(`c.${i}.rollWho`)??c.rollWho;
+        c.modSign=v(`c.${i}.modSign`)??c.modSign;
+        if(c.effect==="rollModifier"){const once=checked(`c.${i}.oneRoll`);if(once!==undefined)c.oneRoll=once;c.rollTarget=modRollTarget(c);}
       }
       if(c.type==="skill"){
         c.skill=v(`c.${i}.skill`)??c.skill;
@@ -1251,7 +1254,7 @@ class ItemBuilder5e extends ApplicationV2 {
       const damage=DAMAGE_RULES.has(c.effect);
       const effectOptions=Object.entries(category.effects).map(([key,text])=>`<option value="${key}" ${c.effect===key?"selected":""}>${text}</option>`).join("");
       let relevantFields="";
-      const formulaLabels={extraDamage:["Extra Damage Formula","2d10"],sameTypeDamage:["Extra Damage Formula","2d10"],attackBonus:["Attack Bonus","1"],reachBonus:["Additional Reach (feet)","5"],acBonus:["AC Bonus","1"],saveBonus:["Saving Throw Bonus","1"],bonusHealing:["Bonus Healing Formula","1d4"],healingReceived:["Healing Modifier (can be negative)","2"],temporaryHp:["Temporary HP Granted","1d4 + @prof"],recoveryBonus:["Bonus per Hit Die","2"],movementControl:["Speed Change (feet)","10 or -10"]};
+      const formulaLabels={extraDamage:["Extra Damage Formula","2d10"],sameTypeDamage:["Extra Damage Formula","2d10"],attackBonus:["Attack Bonus","1"],reachBonus:["Additional Reach (feet)","5"],acBonus:["AC Bonus","1"],saveBonus:["Saving Throw Bonus","1"],bonusHealing:["Bonus Healing Formula","1d4"],healingReceived:["Healing Modifier (can be negative)","2"],temporaryHp:["Temporary HP Granted","1d4 + @prof"],recoveryBonus:["Bonus per Hit Die","2"],movementControl:["Speed Change (feet)","10 or -10"],rollModifier:["Dice (or number)","1d4"]};
       if(formula){const [label,ph]=formulaLabels[c.effect]??["Formula / Modifier","2 or 1d6"];relevantFields+=`<label>${label}<input name="c.${i}.formula" value="${esc(c.formula)}" placeholder="${esc(ph)}"></label>`;}
       if(c.effect==="extraDamage") relevantFields+=`<label>Extra Damage Type<select name="c.${i}.damageType">${standardDamageOptions(c.damageType)}</select></label>`;
       if(c.effect==="sameTypeDamage") relevantFields+=`<label>Triggering Damage Type ${this._tip("The extra damage is rolled only when the activity deals this type, and the additional damage uses this same type.")}<select name="c.${i}.damageType">${standardDamageOptions(c.damageType)}</select></label>`;
@@ -1266,6 +1269,15 @@ class ItemBuilder5e extends ApplicationV2 {
         relevantFields+=`<label>Applies To Roll ${this._tip("Which rolls get advantage or disadvantage. Attack rolls follow this item's attacks; the others apply to the item user.")}<select name="c.${i}.rollTarget">${selectOptions(ROLL_TARGETS,rt,false)}</select></label>`;
         if(["save","check"].includes(rt))relevantFields+=`<label>Ability<select name="c.${i}.ability"><option value="">Any Ability</option>${abilityOptions(c.ability,true).replace('<option value="">—</option>','')}</select></label>`;
         if(rt==="skill")relevantFields+=`<label>Skill<select name="c.${i}.skill"><option value="">Any Skill</option>${selectOptions(cfg("skills",{}),c.skill,false)}</select></label>`;
+      }
+      if(c.effect==="rollModifier"){
+        const who=c.rollWho||"self",rt=modRollTarget(c);
+        relevantFields+=`<label>Add or Subtract ${this._tip("Add puts the dice on the roll (like Bless); Subtract takes them off (like Bane). Typing -1d4 in the dice box also subtracts.")}<select name="c.${i}.modSign">${selectOptions({add:"Add to the roll",subtract:"Subtract from the roll"},c.modSign||"add",false)}</select></label>`;
+        relevantFields+=`<label>Whose Rolls ${this._tip("The item user's own rolls; the attack (or damage) rolls of creatures attacking the item user; saving throws other creatures make against the item user's spells and abilities; or a target, which gets an Apply Effect button on the item's attack, save and damage cards.")}<select name="c.${i}.rollWho">${selectOptions(MOD_WHO,who,false)}</select></label>`;
+        relevantFields+=`<label>Applies To Roll<select name="c.${i}.rollTarget">${selectOptions(modRollTargets(who),rt,false)}</select></label>`;
+        if(["save","check"].includes(rt))relevantFields+=`<label>Ability<select name="c.${i}.ability"><option value="">Any Ability</option>${abilityOptions(c.ability,true).replace('<option value="">—</option>','')}</select></label>`;
+        if(rt==="skill")relevantFields+=`<label>Skill<select name="c.${i}.skill"><option value="">Any Skill</option>${selectOptions(cfg("skills",{}),c.skill,false)}</select></label>`;
+        if(who==="target")relevantFields+=`<label class="check"><input type="checkbox" name="c.${i}.oneRoll" ${c.oneRoll?"checked":""}> Only Its Next Roll ${this._tip("The effect ends after the target makes one matching roll (Cutting Words style). Otherwise it lasts for the activity's duration, like Bane.")}</label>`;
       }
       if(c.effect==="sizeChange"){
         const sizes=Object.fromEntries(Object.entries(cfg("actorSizes",{})).filter(([,v])=>typeof v==="object").map(([k,v])=>[k,loc(v,k)]));
@@ -1314,10 +1326,10 @@ class ItemBuilder5e extends ApplicationV2 {
               const tip=user?"Only while the item's user has at least one of the checked conditions, such as Raging or Bloodied. Leave all unchecked to ignore conditions.":"Only when the other creature has at least one of the checked conditions, such as Prone or Frightened. Leave all unchecked to ignore conditions.";
               const list=c[`${k}Statuses`]??[];
               return `<details class="ib311-field-block ib97-status-block" ${list.length?"open":""}><summary class="ib311-label">${esc(label)}${list.length?` <span class="muted">(${list.length})</span>`:""} ${this._tip(tip)}</summary>${statusChecklist(`c.${i}.${k}Status`,list)}</details>`;};
-              const noOther=c.ruleCategory==="healing"?false:["check","skill","initiative","concentration"].includes(c.rollTarget)&&["advantage","disadvantage"].includes(c.effect);
+              const noOther=c.ruleCategory==="healing"?false:["check","skill","initiative","concentration"].includes(c.rollTarget)&&(["advantage","disadvantage"].includes(c.effect)||(c.effect==="rollModifier"&&(c.rollWho||"self")==="self"));
               const userFirst=self==="target"?["target","source"]:["source","target"];
               return userFirst.filter(k=>!(noOther&&k!==self)).map(side).join("");})()}
-            ${(()=>{const noOther=c.ruleCategory==="healing"||(["check","skill","initiative","concentration"].includes(c.rollTarget)&&["advantage","disadvantage"].includes(c.effect)&&c.ruleCategory==="utility");
+            ${(()=>{const noOther=c.ruleCategory==="healing"||(["check","skill","initiative","concentration"].includes(c.rollTarget)&&(["advantage","disadvantage"].includes(c.effect)||(c.effect==="rollModifier"&&(c.rollWho||"self")==="self"))&&c.ruleCategory==="utility");
               if(noOther)return "";
               const otherName=self==="target"?participants.source:participants.target;
               const steps=["larger","smaller"].includes(c.sizeCompare)?`<label>By at Least<select name="c.${i}.sizeSteps">${selectOptions({"1":"1 size","2":"2 sizes","3":"3 sizes","4":"4 sizes"},String(c.sizeSteps||"1"),false)}</select></label>`
@@ -1414,6 +1426,7 @@ class ItemBuilder5e extends ApplicationV2 {
       if(c.effect==="activeEffect"&&c.activeEffectKey)details.push(`${c.activeEffectKey} = ${c.activeEffectValue}`);
       if(["advantage","disadvantage"].includes(c.effect))details.push(`on ${(ROLL_TARGETS[c.rollTarget||"attack"]??"rolls").toLowerCase()}${c.skill&&c.rollTarget==="skill"?` (${loc(cfg("skills",{})[c.skill],c.skill)})`:""}`);
       if(c.effect==="statusEffect")details.push(c.appliesTo==="target"?"applied to the target from the chat card":"on the item user");
+      if(c.effect==="rollModifier")details.push(`${MOD_WHO[c.rollWho||"self"]?.toLowerCase()}, ${(modRollTargets(c.rollWho||"self")[modRollTarget(c)]??"rolls").toLowerCase()}${c.skill&&modRollTarget(c)==="skill"?` (${loc(cfg("skills",{})[c.skill],c.skill)})`:""}${c.oneRoll&&c.rollWho==="target"?", next roll only":""}`);
       return `${tier} — ${c.name||effect}: ${effect}${details.length?` (${details.join("; ")})`:""} [${handlingLabel(c,this._nativeItemType(),{ownUse:this._ownUse()})}]`;
     }
     if(c.type==="reference")return `${tier} — ${c.name||"Special Rule"}: ${c.text||"No rules text entered"}`;

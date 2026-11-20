@@ -8,7 +8,7 @@
  */
 import { MODULE_ID, usesLabel } from "./compat.mjs";
 import { backgroundLines } from "./background.mjs";
-import { RULE_CATEGORIES, ROLL_TARGETS, participantLabels, statusChoices, triggerOptions } from "./rules.mjs";
+import { RULE_CATEGORIES, ROLL_TARGETS, modParts, modRollTarget, participantLabels, statusChoices, triggerOptions } from "./rules.mjs";
 import { reactionSummary } from "./reactions.mjs";
 import { rechargeSummary } from "./recharge.mjs";
 import { requirementLine } from "./requirements.mjs";
@@ -30,6 +30,38 @@ function rollWords(c) {
   if ( t === "check" ) return ab ? `${ab} checks` : "ability checks";
   if ( t === "initiative" ) return "initiative rolls";
   return String(ROLL_TARGETS[t] ?? "rolls").toLowerCase();
+}
+
+/** "+1d4 to attack rolls" / "subtract 1d4 from attack rolls"; "+2" / "-2" for plain numbers. */
+function signedPhrase(formula, words) {
+  let f = String(formula ?? "").trim() || "?";
+  let neg = false;
+  const m = f.match(/^-\s*(.+)$/);
+  if ( m ) { f = m[1].trim(); neg = true; }
+  f = f.replace(/^\+\s*/, "");
+  if ( /^\d+$/.test(f) ) return `${neg ? "-" : "+"}${f} to ${words}`;
+  return neg ? `Subtract ${f} from ${words}` : `+${f} to ${words}`;
+}
+
+/** Sentence for a Roll Bonus / Penalty. */
+function rollModWords(c, player) {
+  const { dice, subtract } = modParts(c);
+  const f = dice || "?";
+  const rt = modRollTarget(c);
+  const words = rt === "damage" ? "damage rolls" : rt === "concentration" ? "Constitution saving throws to maintain concentration" : rollWords({ ...c, rollTarget: rt });
+  const verb = subtract ? "subtract" : "add";
+  const prep = subtract ? "from" : "to";
+  switch ( c.rollWho || "self" ) {
+    case "attackers":
+      if ( rt === "damage" ) return subtract ? `Damage you take from attacks is reduced by ${f}` : `Damage you take from attacks is increased by ${f}`;
+      return `Creatures that attack you ${verb} ${f} ${prep} their attack rolls`;
+    case "savers":
+      return `Creatures making ${rollWords({ ...c, rollTarget: "save" })} against your spells and abilities ${verb} ${f} ${prep} the roll`;
+    case "target":
+      return `${player ? "Its attacks and effects can make the target" : "The target can be made to"} ${verb} ${f} ${prep} ${c.oneRoll ? `its next ${words.replace(/\b(roll|throw|check)s\b/, "$1")}` : `its ${words}`}`;
+    default:
+      return player ? `You ${verb} ${f} ${prep} your ${words}` : `${subtract ? "Subtract" : "Add"} ${f} ${prep} ${words}`;
+  }
 }
 
 /** Which side of a rule is always the item's own user (its creature filters would only ever test the user). */
@@ -57,26 +89,27 @@ export function ruleSentence(c, { player=false }={}){
   const effect={
     extraDamage:`Deals an extra ${f}${dt?` ${dt}`:""} damage`,
     sameTypeDamage:`Deals an extra ${f} damage when the attack deals ${dt||"the chosen"} damage`,
-    attackBonus:`+${f} to attack rolls`,
+    attackBonus:signedPhrase(f,"attack rolls"),
     attackAdvantage:"Advantage on attack rolls",
-    reachBonus:`+${f} ft. reach`,
+    reachBonus:/^-/.test(f)?`${f} ft. reach`:`+${f} ft. reach`,
     resistance:`Resistance to ${dt||"all"} damage`,
     immunity:`Immunity to ${dt||"all"} damage`,
     vulnerability:`Vulnerability to ${dt||"all"} damage`,
-    acBonus:`+${f} AC`,
-    saveBonus:`+${f} to ${ab?`${ab} `:""}saving throws`,
+    acBonus:/^-/.test(f)?`${f} AC`:`+${f} AC`,
+    saveBonus:signedPhrase(f,`${ab?`${ab} `:""}saving throws`),
     saveAdvantage:`Advantage on ${ab?`${ab} `:""}saving throws`,
     bonusHealing:`Healing you do restores ${f} more hit points`,
     healingReceived:/^-/.test(f)?`${f} to healing you receive`:`+${f} to healing you receive`,
     temporaryHp:`Grants ${f} temporary hit points`,
-    recoveryBonus:`+${f} per Hit Die spent`,
+    recoveryBonus:/^-/.test(f)?`${f} per Hit Die spent`:`+${f} per Hit Die spent`,
     sizeChange:(()=>{const n=Math.abs(Number(c.sizeSteps)||1);const word=["one","two","three"][n-1]??n;
       if(c.sizeMode==="set")return `${player?"You become":"Becomes"} ${loc(cfg("actorSizes",{})[c.size||"lg"],c.size||"lg")} size${player?"":", with tokens resized to match"}`;
       const shrink=Number(c.sizeSteps)<0||c.sizeMode==="shrink";
       return player?`You ${shrink?"shrink":"grow"} ${word} size${n>1?"s":""} ${shrink?"smaller":"larger"}`:`${shrink?"Shrinks":"Grows"} ${n} size${n===1?"":"s"}, with tokens resized to match`;})(),
     movementControl:`${/^-/.test(f)?f:`+${f}`} ft. ${moveWord(c.ability||"walk")} speed`,
     advantage:`Advantage on ${rollWords(c)}`,
-    disadvantage:`Disadvantage on ${rollWords(c)}`
+    disadvantage:`Disadvantage on ${rollWords(c)}`,
+    rollModifier:rollModWords(c,player)
   }[c.effect]??(RULE_CATEGORIES[c.ruleCategory]?.effects?.[c.effect]??"This effect");
   const parts=[effect];
   if(c.ruleCategory==="defensive"){
@@ -102,16 +135,17 @@ export function ruleSentence(c, { player=false }={}){
     const sub=c[`${other}Subtype`];
     const kinds=[...list,...(sub?[`${sub} creatures`]:[])];
     filters=[];
-    if(kinds.length)filters.push(`${c.ruleCategory==="defensive"?"from":"against"} ${listText(kinds)}`);
+    const modOther=c.effect==="rollModifier"&&["attackers","savers"].includes(c.rollWho)?(c.rollWho==="attackers"?"attacker":"creature making the save"):"";
+    if(kinds.length)filters.push(`${modOther?"for":c.ruleCategory==="defensive"?"from":"against"} ${listText(kinds)}`);
     const stSelf=c.ruleCategory==="healing"?"source":self, stOther=stSelf==="source"?"target":"source";
     const otherSt=statusWords(c[`${stOther}Statuses`]);
-    if(otherSt.length)filters.push(c.ruleCategory==="defensive"
+    if(otherSt.length)filters.push(modOther?`when the ${modOther} is ${listText(otherSt)}`:c.ruleCategory==="defensive"
       ?`when the ${["saveBonus","saveAdvantage"].includes(c.effect)?"creature causing the save":"attacker"} is ${listText(otherSt)}`
       :c.ruleCategory==="healing"?`when the creature being healed is ${listText(otherSt)}`:`against a target that is ${listText(otherSt)}`);
     const sz=c.ruleCategory==="healing"?"":sizeWords(c);
-    if(sz)filters.push(c.ruleCategory==="defensive"
+    if(sz)filters.push(modOther?`when the ${modOther} is ${sz}`:c.ruleCategory==="defensive"
       ?`when the ${["saveBonus","saveAdvantage"].includes(c.effect)?"creature causing the save":"attacker"} is ${sz}`
-      :c.ruleCategory==="utility"&&c.rollTarget==="save"?`when the creature causing the save is ${sz}`
+      :c.ruleCategory==="utility"&&c.rollTarget==="save"&&!(c.effect==="rollModifier"&&c.rollWho==="target")?`when the creature causing the save is ${sz}`
       :`against a target that is ${sz}`);
     const selfSt=stSelf?statusWords(c[`${stSelf}Statuses`]):[];
     if(selfSt.length)filters.push(`while you are ${listText(selfSt)}`);
