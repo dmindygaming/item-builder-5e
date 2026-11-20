@@ -2,6 +2,11 @@
 
 All notable changes to Item Builder 5e.
 
+## v1.2.4 Fix: "until the end of your turn" with unlinked tokens
+
+- An effect lasting "until the end of your turn" (or the start or end of your next turn) is now removed when the item user's token isn't linked to its actor. Before, Item Builder didn't recognize the token's actor as the same creature, so the effect stayed until D&D5e removed it a turn later.
+- The builder's summary for a limited target effect now says how often it can be used ("…, once per turn").
+
 ## v1.2.3 Once per turn
 
 - **How Often** (new choice for anything applied to a target: a condition, a roll bonus or penalty, or an AC change). The choices are no limit, once per turn, once per short or long rest, once per long rest, or once per day.
