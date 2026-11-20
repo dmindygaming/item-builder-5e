@@ -2,6 +2,20 @@
 
 All notable changes to Item Builder 5e.
 
+## v1.2.2 Lowering a target's AC, and how long target effects last
+
+- **AC Bonus / Penalty** (new Utility effect): changes AC by a number. Who gets it:
+  - The item user, while the item is active.
+  - The target. The item's attack, save and damage cards get an Apply Effect button: *reduce the target's AC by 2*.
+- **How Long** (new choice for anything applied to a target: a condition, a roll bonus or penalty, or an AC change):
+  - The activity's duration.
+  - Until the end of your turn.
+  - Until the start of your next turn.
+  - Until the end of your next turn.
+
+  Turns are counted on the item user's turns in combat. The effect is removed automatically, by D&D5e 6 where it can and by Item Builder otherwise.
+- **Describe It** reads "reducing their Armor Class by 2", "its AC is reduced by two", "the target takes a -1 penalty to AC", and "until the end of your turn / the start of your next turn / the end of your next turn" on effects applied to a target.
+
 ## v1.2.1 Adding and subtracting dice on rolls
 
 - **Roll Bonus / Penalty (Dice)** (new Utility effect): adds or subtracts dice, or a number, on a roll, like Bless (+1d4) or Bane (−1d4).
