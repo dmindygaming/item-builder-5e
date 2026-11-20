@@ -66,7 +66,7 @@ function acModWords(c, player) {
   const lower = /^-/.test(raw), n = raw.replace(/^[-+]\s*/, "");
   if ( c.appliesTo === "target" ) {
     const change = `${lower ? "lower" : "raise"} the target's AC by ${n}${durationWords(c)}`;
-    return player ? targetLead(c, change) : `${lower ? "Lower" : "Raise"} the target's AC by ${n}${durationWords(c)}`;
+    return player ? targetLead(c, change) : `${lower ? "Lower" : "Raise"} the target's AC by ${n}${durationWords(c)}${useLimitWords(c) ? `, ${useLimitWords(c)}` : ""}`;
   }
   return lower ? `-${n} AC` : `+${n} AC`;
 }
@@ -88,7 +88,7 @@ function rollModWords(c, player) {
     case "target":
       {
         const rest = `${verb} ${f} ${prep} ${c.oneRoll ? `its next ${words.replace(/\b(roll|throw|check)s\b/, "$1")}` : `its ${words}`}${durationWords(c)}`;
-        return player ? targetLead(c, `make the target ${rest}`) : `The target can be made to ${rest}`;
+        return player ? targetLead(c, `make the target ${rest}`) : `The target can be made to ${rest}${useLimitWords(c) ? `, ${useLimitWords(c)}` : ""}`;
       }
     default:
       return player ? `You ${verb} ${f} ${prep} your ${words}` : `${subtract ? "Subtract" : "Add"} ${f} ${prep} ${words}`;

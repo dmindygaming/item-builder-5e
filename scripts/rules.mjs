@@ -1258,6 +1258,16 @@ function effectSourceActor(effect) {
   return origin?.actor ?? (origin?.documentName === "Actor" ? origin : null) ?? origin?.item?.actor ?? null;
 }
 
+/**
+ * Is this the same creature? A combatant's actor is often a token's synthetic actor while an effect's source
+ * is the world actor (or the other way round), so world actors also match by id.
+ */
+function sameActor(a, b) {
+  if ( !a || !b ) return false;
+  if ( a === b || a.uuid === b.uuid ) return true;
+  return (!a.isToken || !b.isToken) && a.id === b.id;
+}
+
 /** Ends target effects whose "how long" choice has run out. Runs on the active GM's client. */
 function registerTargetExpiry() {
   Hooks.on("combatTurnChange", (combat, prior, current) => {
@@ -1278,9 +1288,9 @@ function registerTargetExpiry() {
           const startRound = effect.start?.round ?? effect.duration?.startRound;
           const startTurn = effect.start?.turn ?? effect.duration?.startTurn;
           const appliedThen = (r, t) => startRound === r && startTurn === t;
-          if ( mode === "turnEnd" && ended === source ) done.push(effect.id);
-          else if ( mode === "nextEnd" && ended === source && !appliedThen(prior.round, prior.turn) ) done.push(effect.id);
-          else if ( mode === "nextStart" && starting === source && !appliedThen(current.round, current.turn) ) done.push(effect.id);
+          if ( mode === "turnEnd" && sameActor(ended, source) ) done.push(effect.id);
+          else if ( mode === "nextEnd" && sameActor(ended, source) && !appliedThen(prior.round, prior.turn) ) done.push(effect.id);
+          else if ( mode === "nextStart" && sameActor(starting, source) && !appliedThen(current.round, current.turn) ) done.push(effect.id);
         }
         if ( done.length ) actor.deleteEmbeddedDocuments("ActiveEffect", done).catch(err => console.error(`${MODULE_ID} | target effect expiry`, err));
       }
