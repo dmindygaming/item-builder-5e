@@ -2,6 +2,20 @@
 
 All notable changes to Item Builder 5e.
 
+## v1.2.1 Adding and subtracting dice on rolls
+
+- **Roll Bonus / Penalty (Dice)** (new Utility effect): adds or subtracts dice, or a number, on a roll, like Bless (+1d4) or Bane (−1d4).
+  - Rolls: attack, damage, saving throws, ability checks (including skills), one skill or all skills, initiative, or concentration. Saves and checks can be limited to one ability.
+  - Whose rolls it changes:
+    - The item user's own rolls. Built into the item as a D&D5e bonus when it has no filters, or when its only filter is a condition on you (such as while raging). Otherwise it's added at roll time.
+    - Creatures attacking the item user: a penalty (or bonus) on their attack rolls against you, or less (or more) damage taken from them, never below 0.
+    - Creatures making saves against the item user's spells and abilities.
+    - The target: an Apply Effect button on the item's attack, save and damage cards. The effect lasts for the activity's duration, or with **Only Its Next Roll** it ends after the target makes one matching roll.
+  - Creature-type, condition and size filters work as on every other rule.
+- A penalty on a damage roll can no longer leave damage below 0, so damage never heals.
+- **Item descriptions** say negative bonuses properly: "Subtract 1d4 from attack rolls" instead of "+-1d4 to attack rolls", and "-2 to saving throws" instead of "+-2". This also covers AC, reach and Hit Die bonuses.
+- **Describe It** reads "you can add 1d4 to your attack rolls", "+1d4 to saving throws", "roll a d4 and add the number rolled to the saving throw", "creatures that attack you subtract 1d4 from their attack rolls", "creatures making saving throws against your spells subtract 1d4", "the target subtracts 1d4 from its next saving throw", "a 1d4 penalty to initiative" and "damage you take from attacks is reduced by 1d6". Limited-use boosts such as Tactical Mind ("expend a use of Second Wind… add 1d10 to the check") stay as rules text, because they're a choice made at the table.
+
 ## v1.2.0 Recharging class abilities, and size checks
 
 - **Recharge** (new component, under Actions): restores uses of the holder's class abilities, such as Channel Divinity, Wild Shape, Rage, Bardic Inspiration, Action Surge, Second Wind, Lay on Hands, Focus Points or Sorcery Points, or an expended spell slot up to a level you pick.
