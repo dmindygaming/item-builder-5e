@@ -19,11 +19,11 @@ import { DEFAULT_BACKGROUND, applyBackgroundAdvancement, backgroundSettings, too
 import { FEAT_POOLS, FEAT_PACK_LABEL, applyFeatAdvancement, featGrantIsNative, publishFeat, publishesToPack, registerFeatHooks, sourceOfCopy, syncFeatGrants } from "./feats.mjs";
 import {
   DAMAGE_RULES, DEFENSIVE_TRIGGERS, FORMULA_RULES, OFFENSIVE_DAMAGE_RULES, ROLL_TARGETS, RULE_CATEGORIES,
-  STATUS_TARGETS, TARGET_DURATIONS, isTargetEffect, MOD_WHO, modRollTargets, modRollTarget, SIZE_COMPARE, SIZE_KEYS, statusChoices, handlingLabel, hasAutomationEffect, participantLabels, triggerOptions, match, registerRuleHooks, ruleDiagnostic,
+  STATUS_TARGETS, TARGET_DURATIONS, USE_LIMITS, isTargetEffect, MOD_WHO, modRollTargets, modRollTarget, SIZE_COMPARE, SIZE_KEYS, statusChoices, handlingLabel, hasAutomationEffect, participantLabels, triggerOptions, match, registerRuleHooks, ruleDiagnostic,
   itemHasOwnUse, ruleFromComponent, sizeAfter, ruleHandling, syncRuleEffects
 } from "./rules.mjs";
 
-const MODULE_VERSION = "1.2.2";
+const MODULE_VERSION = "1.2.3";
 /** Returns every Fighting Style feat (cached), set up at init. */
 let fightingStyles = async () => [];
 /** Every feat (cached), set up at init. */
@@ -588,7 +588,7 @@ class ItemBuilder5e extends ApplicationV2 {
       this._capture();
       this.render({force:true});
     }));
-    el.querySelectorAll('select[name$=".rollTarget"],select[name$=".appliesTo"],select[name$=".rollWho"],select[name$=".modSign"]').forEach(sel=>sel.addEventListener("change",()=>{this._capture();this.render({force:true});}));
+    el.querySelectorAll('select[name$=".rollTarget"],select[name$=".appliesTo"],select[name$=".rollWho"],select[name$=".modSign"],select[name$=".useLimit"]').forEach(sel=>sel.addEventListener("change",()=>{this._capture();this.render({force:true});}));
     el.querySelectorAll('select[name$=".reactionEffect"],select[name$=".trigger"],select[name$=".usesMode"],select[name$=".sizeMode"],select[name$=".requireKind"],select[name$=".penalty"],select[name$=".mode"],select[name$=".poolType"],select[name$=".bonusMode"],select[name$=".target"],select[name$=".sizeCompare"]').forEach(sel=>sel.addEventListener("change",()=>{this._capture();this.render({force:true});}));
     el.querySelectorAll('select[name$=".selectionMode"]').forEach(sel=>sel.addEventListener("change",()=>{this._capture();this.render({force:true});}));
 
@@ -775,6 +775,8 @@ class ItemBuilder5e extends ApplicationV2 {
         c.appliesTo=v(`c.${i}.appliesTo`)??c.appliesTo;
         c.rollWho=v(`c.${i}.rollWho`)??c.rollWho;
         c.targetDuration=v(`c.${i}.targetDuration`)??c.targetDuration;
+        c.useLimit=v(`c.${i}.useLimit`)??c.useLimit;
+        c.useWhen=v(`c.${i}.useWhen`)??c.useWhen;
         c.modSign=v(`c.${i}.modSign`)??c.modSign;
         if(c.effect==="rollModifier"){const once=checked(`c.${i}.oneRoll`);if(once!==undefined)c.oneRoll=once;c.rollTarget=modRollTarget(c);}
       }
@@ -1282,6 +1284,10 @@ class ItemBuilder5e extends ApplicationV2 {
         if(who==="target")relevantFields+=`<label class="check"><input type="checkbox" name="c.${i}.oneRoll" ${c.oneRoll?"checked":""}> Only Its Next Roll ${this._tip("The effect ends after the target makes one matching roll (Cutting Words style). Otherwise it lasts for the activity's duration, like Bane.")}</label>`;
       }
       if(isTargetEffect(c))relevantFields+=`<label>How Long ${this._tip("How long the effect stays on the target. The activity's duration uses the Duration set on the item's attack or save. The turn-based choices are counted on the item user's turns in combat.")}<select name="c.${i}.targetDuration">${selectOptions(TARGET_DURATIONS,c.targetDuration||"",false)}</select></label>`;
+      if(isTargetEffect(c)){
+        relevantFields+=`<label>How Often ${this._tip("No limit: every attack, save or damage card gets an Apply Effect button. A limit (such as once per turn) gives the item its own activity with one use instead; use it after a hit to apply the effect, and D&D5e refuses another use until it recovers.")}<select name="c.${i}.useLimit">${selectOptions(USE_LIMITS,c.useLimit||"",false)}</select></label>`;
+        if(c.useLimit)relevantFields+=`<label>Use When ${this._tip("Shown on the activity, such as: when you hit with an attack.")}<input type="text" name="c.${i}.useWhen" value="${esc(c.useWhen||"")}" placeholder="when you hit with an attack"></label>`;
+      }
       if(c.effect==="sizeChange"){
         const sizes=Object.fromEntries(Object.entries(cfg("actorSizes",{})).filter(([,v])=>typeof v==="object").map(([k,v])=>[k,loc(v,k)]));
         const mode=c.sizeMode||"grow";
@@ -1431,6 +1437,7 @@ class ItemBuilder5e extends ApplicationV2 {
       if(c.effect==="statusEffect")details.push(c.appliesTo==="target"?"applied to the target from the chat card":"on the item user");
       if(c.effect==="acModifier")details.push(c.appliesTo==="target"?"applied to the target from the chat card":"on the item user");
       if(isTargetEffect(c)&&c.targetDuration)details.push(TARGET_DURATIONS[c.targetDuration].toLowerCase());
+      if(isTargetEffect(c)&&c.useLimit)details.push(USE_LIMITS[c.useLimit].toLowerCase());
       if(c.effect==="rollModifier")details.push(`${MOD_WHO[c.rollWho||"self"]?.toLowerCase()}, ${(modRollTargets(c.rollWho||"self")[modRollTarget(c)]??"rolls").toLowerCase()}${c.skill&&modRollTarget(c)==="skill"?` (${loc(cfg("skills",{})[c.skill],c.skill)})`:""}${c.oneRoll&&c.rollWho==="target"?", next roll only":""}`);
       return `${tier} — ${c.name||effect}: ${effect}${details.length?` (${details.join("; ")})`:""} [${handlingLabel(c,this._nativeItemType(),{ownUse:this._ownUse()})}]`;
     }

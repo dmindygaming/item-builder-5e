@@ -210,6 +210,17 @@ export const TARGET_DURATIONS = {
   nextStart: "Until the start of your next turn",
   nextEnd: "Until the end of your next turn"
 };
+/** How often an effect applied to a target can be used (D&D5e use recovery periods). */
+export const USE_LIMITS = {
+  "": "No limit (every hit or use)",
+  turn: "Once per turn",
+  sr: "Once per short or long rest",
+  lr: "Once per long rest",
+  day: "Once per day"
+};
+const LIMIT_WORDS = { turn: "once per turn", sr: "once per short rest", lr: "once per long rest", day: "once per day" };
+/** "once per turn" for a limited target effect, or "". */
+export function useLimitWords(c) { return isTargetEffect(c) ? (LIMIT_WORDS[c?.useLimit] ?? "") : ""; }
 /** Is this component an effect applied to a target from the chat card? */
 export function isTargetEffect(c) {
   return (["statusEffect", "acModifier"].includes(c?.effect) && c.appliesTo === "target") || (c?.effect === "rollModifier" && c.rollWho === "target");
@@ -303,6 +314,14 @@ export function onlyUserStatuses(c) {
  * @returns {{mode:"native"|"runtime"|"reference", note:string, ignoresConditions?:boolean}}
  */
 export function ruleHandling(c, itemType="", { ownUse=defaultOwnUse(itemType) }={}) {
+  const h = ruleHandlingBase(c, itemType, { ownUse });
+  if ( isTargetEffect(c) && c.useLimit && USE_LIMITS[c.useLimit] && h.mode === "native" ) {
+    return { ...h, note: `Built in as its own activity on the item ("${c.name || "Apply Effect"}") that can be used ${LIMIT_WORDS[c.useLimit]}: use it after a hit to give the target the effect. D&D5e tracks the use and refuses another until it recovers.` };
+  }
+  return h;
+}
+
+function ruleHandlingBase(c, itemType="", { ownUse=defaultOwnUse(itemType) }={}) {
   const effect = c.effect;
   const conditional = hasConditions(c);
   const trigger = String(c.trigger ?? "damage");
@@ -457,6 +476,7 @@ export function ruleFromComponent(c, itemType="", options={}) {
     rollTarget: c.effect === "rollModifier" ? modRollTarget(c) : (c.rollTarget || "attack"),
     appliesTo: c.appliesTo || "self",
     targetDuration: isTargetEffect(c) ? (c.targetDuration || "") : "",
+    useLimit: isTargetEffect(c) ? (c.useLimit || "") : "",
     rollWho: c.effect === "rollModifier" ? (c.rollWho || "self") : "",
     modSign: c.effect === "rollModifier" ? (modParts(c).subtract ? "subtract" : "add") : "",
     modFormula: c.effect === "rollModifier" ? signedModFormula(c) : "",
@@ -871,12 +891,17 @@ export async function syncRuleEffects(item) {
   const updates = {};
 
   // Link "apply to target" condition effects to the item's attack / save / damage activities.
+  const tierOk = e => (Number(e.getFlag(MODULE_ID, "minTier")) || 1) <= tier;
   const targetIds = created
-    .filter(e => e.getFlag(MODULE_ID, "statusTarget") && (Number(e.getFlag(MODULE_ID, "minTier")) || 1) <= tier)
+    .filter(e => e.getFlag(MODULE_ID, "statusTarget") && !e.getFlag(MODULE_ID, "useLimit") && tierOk(e))
     .map(e => e.id);
+  const limited = created.filter(e => e.getFlag(MODULE_ID, "statusTarget") && e.getFlag(MODULE_ID, "useLimit") && tierOk(e));
+  // Activities Item Builder made itself (recharges, limited target effects) keep only their own effects.
+  const limitRecord = readJsonFlag(item, "limitActivities");
+  const managed = new Set([...Object.values(readJsonFlag(item, "recharges")), ...Object.values(limitRecord)]);
   const existingIds = new Set([...(item.effects ?? [])].map(e => e.id));
   for ( const activity of item.system.activities ?? [] ) {
-    if ( !["attack", "save", "damage", "utility"].includes(activity.type) ) continue;
+    if ( !["attack", "save", "damage", "utility"].includes(activity.type) || managed.has(activity.id) ) continue;
     const current = (activity.toObject?.().effects ?? []).filter(e => e?._id);
     const kept = current.filter(e => !oldSet.has(e._id) && existingIds.has(e._id));
     const next = kept.concat(targetIds.map(_id => ({ _id })));
@@ -911,6 +936,60 @@ export async function syncRuleEffects(item) {
   }
 
   if ( !foundry.utils.isEmpty(updates) ) await item.update(updates);
+
+  await syncLimitActivities(item, limited, limitRecord, comps);
+}
+
+const cap = t => String(t).charAt(0).toUpperCase() + String(t).slice(1);
+
+/** A JSON-object flag (stored as a string so Foundry never merges stale keys into it). */
+function readJsonFlag(item, key) {
+  try {
+    const raw = item.getFlag?.(MODULE_ID, key);
+    return typeof raw === "string" ? JSON.parse(raw || "{}") : (raw ?? {});
+  } catch { return {}; }
+}
+
+/**
+ * "Once per turn, when you hit, the target's AC drops by 2": each limited target effect gets its own utility
+ * activity with one use that D&D5e recovers each turn (or rest / day), so a second use is refused natively.
+ * Rebuilt on every sync because the effects are recreated; spent uses carry over.
+ */
+async function syncLimitActivities(item, limited, record, comps) {
+  if ( !item?.system?.activities || (!limited.length && !Object.keys(record).length) ) return;
+  const spent = {};
+  for ( const [cid, actId] of Object.entries(record) ) {
+    const act = item.system.activities.get?.(actId);
+    if ( act ) { spent[cid] = act.uses?.spent ?? 0; await item.deleteActivity(actId); }
+  }
+  const next = {};
+  for ( const effect of limited ) {
+    const cid = effect.getFlag(MODULE_ID, "componentId");
+    const c = comps.find(x => x.id === cid);
+    if ( !c ) continue;
+    const id = foundry.utils.randomID();
+    const period = c.useLimit;
+    const when = String(c.useWhen ?? "").trim();
+    const data = {
+      _id: id,
+      name: c.name || "Apply Effect",
+      img: effect.img,
+      activation: { type: "special", value: null, condition: [cap(LIMIT_WORDS[period]), when].filter(Boolean).join(", "), override: false },
+      range: { override: false },
+      target: { affects: { type: "creature", count: "1", choice: false }, prompt: false },
+      uses: { max: "1", spent: Math.min(1, Number(spent[cid]) || 0), recovery: [{ period, type: "recoverAll" }] },
+      consumption: { targets: [{ type: "activityUses", target: "", value: "1" }], spellSlot: false },
+      effects: [{ _id: effect.id }]
+    };
+    try {
+      await item.createActivity("utility", data, { renderSheet: false });
+      next[cid] = id;
+    } catch (err) {
+      console.error(`${MODULE_ID} | could not create the limited activity "${data.name}"`, err);
+      ui.notifications?.error(`${item.name}: "${data.name}" could not be added.`);
+    }
+  }
+  await item.setFlag(MODULE_ID, "limitActivities", JSON.stringify(next));
 }
 
 /** Comparable identity of a damage part Item Builder added. */
@@ -1156,6 +1235,7 @@ function actionTypeOf(activity, attackMode) {
  * The effect also gets a one-round duration so D&D5e doesn't replace it with the activity's duration.
  */
 function targetDuration(data, c) {
+  if ( data && c.useLimit && USE_LIMITS[c.useLimit] ) data.flags[MODULE_ID].useLimit = c.useLimit;
   const mode = c.targetDuration || "";
   if ( !data || !mode ) return data;
   const d6 = isDnd5e6();

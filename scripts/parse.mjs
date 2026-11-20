@@ -942,6 +942,11 @@ export function parseDescription(text, ctx={}) {
     const optionalBoost = /\b(?:expend|use this (?:feature|ability|trait|power)|use (?:your|a) reaction|as a reaction|when you fail|fails? (?:a|an|the) (?:saving throw|check|attack)|after (?:you )?(?:see|roll|make)|before (?:you|the dm)|times equal|once (?:per|before|within|on each)|uses? of|inspiration die|superiority die|until the end of (?:your|its) (?:next )?turn|rather than|potentially|still fails?)\b/.test(s)
       || (boostCarry && /\b(?:the|that|this) (?:check|roll|saving throw|attack roll)\b/.test(s));
     boostCarry = optionalBoost;
+    // "Once per turn, when you hit with an attack, …": a use limit and when to use it, for effects put on a target.
+    const limitOf = t => /\bonce (?:per|each|on each of your|on each) turn\b|\bonce per round\b/.test(t) ? "turn"
+      : /\bonce per short rest\b|\bonce per (?:short or long|long or short) rest\b/.test(t) ? "sr"
+      : /\bonce per long rest\b/.test(t) ? "lr" : /\bonce per day\b|\bonce a day\b|\bonce each day\b/.test(t) ? "day" : "";
+    const whenOf = t => (t.match(/\b(when(?:ever)? you hit(?: (?:a creature|a target|an enemy|someone))?(?: with (?:an? |this )?(?:melee |ranged )?(?:weapon )?(?:attack|weapon)(?: roll)?)?)/)?.[1] ?? "").trim();
     // "…reducing their Armor Class by 2 until the end of your turn", "the target takes a -2 penalty to AC".
     if ( !requirementSentence && !statBlock && /\b(?:armor class|ac)\b/.test(s) ) {
       const NUM = "(\\d+|one|two|three|four|five)";
@@ -957,8 +962,10 @@ export function parseDescription(text, ctx={}) {
         const lasts = /\buntil the end of your next turn\b/.test(s) ? "nextEnd" : /\buntil the start of your next turn\b/.test(s) ? "nextStart"
           : /\buntil the end of (?:your|the|this) (?:current )?turn\b/.test(s) ? "turnEnd" : "";
         const lastsWords = { nextEnd: " until the end of your next turn", nextStart: " until the start of your next turn", turnEnd: " until the end of your turn" }[lasts] ?? "";
-        add(self ? `Your AC is reduced by ${n}` : `Target's AC lowered by ${n}${lastsWords}`, { type: "utility", effect: "acModifier",
-          name: self ? `AC -${n}` : `Target AC -${n}`, formula: `-${n}`, appliesTo: self ? "self" : "target", targetDuration: self ? "" : lasts });
+        const limitLabel = !self && limitOf(s) ? ` (${{ turn: "once per turn", sr: "once per short rest", lr: "once per long rest", day: "once per day" }[limitOf(s)]})` : "";
+        add(self ? `Your AC is reduced by ${n}` : `Target's AC lowered by ${n}${lastsWords}${limitLabel}`, { type: "utility", effect: "acModifier",
+          name: self ? `AC -${n}` : "Lower Target's AC", formula: `-${n}`, appliesTo: self ? "self" : "target", targetDuration: self ? "" : lasts,
+          useLimit: self ? "" : limitOf(s), useWhen: self ? "" : whenOf(s) });
       }
     }
 
@@ -1020,7 +1027,8 @@ export function parseDescription(text, ctx={}) {
           savers: `Creatures saving against you ${mod.subtract ? "subtract" : "add"} ${mod.dice}${fromWho}`,
           target: `Target ${mod.subtract ? "subtracts" : "adds"} ${mod.dice} ${mod.subtract ? "from" : "to"} ${once ? `its next ${lc(rollName).replace(/\b(roll|throw|check)s\b/, "$1")}` : `its ${lc(rollName)}`}` }[who];
         add(label, { type: "utility", effect: "rollModifier", name: `${mod.subtract ? "-" : "+"}${mod.dice} ${rollName}`, formula: mod.dice, modSign: mod.subtract ? "subtract" : "add",
-          rollWho: who, rollTarget: roll, ability: ab, skill: sk, oneRoll: once, targetDuration: lasts, ...(types.length ? { targetTypes: types } : {}) });
+          rollWho: who, rollTarget: roll, ability: ab, skill: sk, oneRoll: once, targetDuration: lasts,
+          useLimit: who === "target" ? limitOf(s) : "", useWhen: who === "target" ? whenOf(s) : "", ...(types.length ? { targetTypes: types } : {}) });
       }
     }
 

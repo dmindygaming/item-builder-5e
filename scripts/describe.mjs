@@ -8,7 +8,7 @@
  */
 import { MODULE_ID, usesLabel } from "./compat.mjs";
 import { backgroundLines } from "./background.mjs";
-import { RULE_CATEGORIES, ROLL_TARGETS, isTargetEffect, modParts, modRollTarget, participantLabels, statusChoices, triggerOptions } from "./rules.mjs";
+import { RULE_CATEGORIES, ROLL_TARGETS, isTargetEffect, useLimitWords, modParts, modRollTarget, participantLabels, statusChoices, triggerOptions } from "./rules.mjs";
 import { reactionSummary } from "./reactions.mjs";
 import { rechargeSummary } from "./recharge.mjs";
 import { requirementLine } from "./requirements.mjs";
@@ -49,13 +49,24 @@ function durationWords(c) {
   return { turnEnd: " until the end of your turn", nextStart: " until the start of your next turn", nextEnd: " until the end of your next turn" }[c.targetDuration] ?? "";
 }
 
+/**
+ * Lead-in for an effect applied to a target: "Its attacks and effects can …", or for a limited one
+ * "Once per turn, when you hit with an attack, you can …".
+ */
+function targetLead(c, change) {
+  const limit = useLimitWords(c);
+  if ( !limit ) return `Its attacks and effects can ${change}`;
+  const when = String(c.useWhen ?? "").trim().replace(/[.,;]+$/, "");
+  return `${limit.charAt(0).toUpperCase()}${limit.slice(1)}${when ? `, ${when}` : ""}, you can ${change}`;
+}
+
 /** Sentence for an AC Bonus / Penalty. */
 function acModWords(c, player) {
   const raw = String(c.formula ?? "").trim() || "?";
   const lower = /^-/.test(raw), n = raw.replace(/^[-+]\s*/, "");
   if ( c.appliesTo === "target" ) {
     const change = `${lower ? "lower" : "raise"} the target's AC by ${n}${durationWords(c)}`;
-    return player ? `Its attacks and effects can ${change}` : `${lower ? "Lower" : "Raise"} the target's AC by ${n}${durationWords(c)}`;
+    return player ? targetLead(c, change) : `${lower ? "Lower" : "Raise"} the target's AC by ${n}${durationWords(c)}`;
   }
   return lower ? `-${n} AC` : `+${n} AC`;
 }
@@ -75,7 +86,10 @@ function rollModWords(c, player) {
     case "savers":
       return `Creatures making ${rollWords({ ...c, rollTarget: "save" })} against your spells and abilities ${verb} ${f} ${prep} the roll`;
     case "target":
-      return `${player ? "Its attacks and effects can make the target" : "The target can be made to"} ${verb} ${f} ${prep} ${c.oneRoll ? `its next ${words.replace(/\b(roll|throw|check)s\b/, "$1")}` : `its ${words}`}${durationWords(c)}`;
+      {
+        const rest = `${verb} ${f} ${prep} ${c.oneRoll ? `its next ${words.replace(/\b(roll|throw|check)s\b/, "$1")}` : `its ${words}`}${durationWords(c)}`;
+        return player ? targetLead(c, `make the target ${rest}`) : `The target can be made to ${rest}`;
+      }
     default:
       return player ? `You ${verb} ${f} ${prep} your ${words}` : `${subtract ? "Subtract" : "Add"} ${f} ${prep} ${words}`;
   }
@@ -292,7 +306,7 @@ export function componentLine(c, { spellName, names={} }={}) {
         const st = (globalThis.CONFIG?.statusEffects ?? []).find(e => e.id === c.status);
         const name = st ? loc(st.name ?? st.label, c.status) : c.status;
         return c.appliesTo === "target"
-          ? `Its attacks and effects can make the target ${name.toLowerCase()}${durationWords(c)}`
+          ? targetLead(c, `make the target ${name.toLowerCase()}${durationWords(c)}`)
           : `You are ${name.toLowerCase()} while you have it`;
       }
       if ( c.effect === "activeEffect" ) {
