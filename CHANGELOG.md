@@ -2,6 +2,15 @@
 
 All notable changes to Item Builder 5e.
 
+## v1.2.3 Once per turn
+
+- **How Often** (new choice for anything applied to a target: a condition, a roll bonus or penalty, or an AC change). The choices are no limit, once per turn, once per short or long rest, once per long rest, or once per day.
+  - With a limit, the effect gets its own activity on the item instead of an Apply Effect button on every attack, save and damage card.
+  - That activity has one use that D&D5e recovers each turn (or rest, or day), so D&D5e refuses a second use until it recovers.
+  - An optional **Use When** note (such as "when you hit with an attack") is shown on the activity.
+- **Describe It** reads "once per turn", "once per short rest", "once per long rest" and "once per day", plus "when you hit…", on effects put on a target. The Sundering's "Once per turn, when you hit with an attack, … reducing their Armor Class by 2 until the end of your turn" becomes a once-per-turn "Lower Target's AC" activity.
+- Item Builder's own activities (recharges and limited effects) no longer pick up other target effects.
+
 ## v1.2.2 Lowering a target's AC, and how long target effects last
 
 - **AC Bonus / Penalty** (new Utility effect): changes AC by a number. Who gets it:
