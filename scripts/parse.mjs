@@ -987,11 +987,15 @@ export function parseDescription(text, ctx={}) {
         seen.add(key);
         // Creature filters: "fiends that attack you", "undead making saves against your spells".
         const types = who === "self" || who === "target" ? [] : creaturesIn(lead.split(/[.;]/).at(-1) ?? "", T);
-        const rollName = { attack: "Attack Rolls", damage: who === "attackers" ? "Damage Taken" : "Damage Rolls", save: "Saving Throws", check: "Ability Checks", skill: "Skill Checks", initiative: "Initiative", concentration: "Concentration" }[roll];
-        const label = { self: `${mod.subtract ? "Subtract" : "Add"} ${mod.dice} ${mod.subtract ? "from" : "to"} your ${rollName.toLowerCase()}`,
-          attackers: roll === "damage" ? `Damage you take from attacks ${mod.subtract ? "reduced" : "increased"} by ${mod.dice}` : `Creatures attacking you ${mod.subtract ? "subtract" : "add"} ${mod.dice}`,
-          savers: `Creatures saving against you ${mod.subtract ? "subtract" : "add"} ${mod.dice}`,
-          target: `Target ${mod.subtract ? "subtracts" : "adds"} ${mod.dice} ${mod.subtract ? "from" : "to"} ${once ? "its next" : "its"} ${rollName.toLowerCase()}` }[who];
+        const abWord = ab ? `${cap(T.abilities.find(([k]) => k === ab)?.[1] ?? ab)} ` : "";
+        const skWord = sk ? titled(T.skills.find(([k]) => k === sk)?.[1] ?? sk) : "";
+        const rollName = { attack: "Attack Rolls", damage: who === "attackers" ? "Damage Taken" : "Damage Rolls", save: `${abWord}Saving Throws`, check: `${abWord}Ability Checks`, skill: skWord ? `${skWord} Checks` : "Skill Checks", initiative: "Initiative", concentration: "Concentration" }[roll];
+        const fromWho = types.length ? ` (${types.map(plural).join(", ")})` : "";
+        const lc = t => t.replace(/\b(Attack|Damage|Saving|Throws?|Rolls?|Ability|Checks?|Skill|Initiative|Concentration|Taken)\b/g, w => w.toLowerCase());
+        const label = { self: `${mod.subtract ? "Subtract" : "Add"} ${mod.dice} ${mod.subtract ? "from" : "to"} your ${lc(rollName)}`,
+          attackers: roll === "damage" ? `Damage you take from attacks ${mod.subtract ? "reduced" : "increased"} by ${mod.dice}${fromWho}` : `Creatures attacking you ${mod.subtract ? "subtract" : "add"} ${mod.dice}${fromWho}`,
+          savers: `Creatures saving against you ${mod.subtract ? "subtract" : "add"} ${mod.dice}${fromWho}`,
+          target: `Target ${mod.subtract ? "subtracts" : "adds"} ${mod.dice} ${mod.subtract ? "from" : "to"} ${once ? `its next ${lc(rollName).replace(/\b(roll|throw|check)s\b/, "$1")}` : `its ${lc(rollName)}`}` }[who];
         add(label, { type: "utility", effect: "rollModifier", name: `${mod.subtract ? "-" : "+"}${mod.dice} ${rollName}`, formula: mod.dice, modSign: mod.subtract ? "subtract" : "add",
           rollWho: who, rollTarget: roll, ability: ab, skill: sk, oneRoll: once, ...(types.length ? { targetTypes: types } : {}) });
       }
