@@ -27,9 +27,9 @@ export const RULE_CATEGORIES = {
   offensive: { label: "Offensive Effect", icon: "fa-burst", effects: { extraDamage: "Extra Damage", sameTypeDamage: "Additional Same-Type Damage", attackBonus: "Attack Bonus", attackAdvantage: "Attack Advantage", reachBonus: "Increase Reach", ignoreHalfCover: "Ignore Half Cover", ignoreThreeQuartersCover: "Ignore Three-Quarters Cover", ignoreAllCover: "Ignore All Cover", ignoreResistance: "Ignore Damage Resistance", ignoreImmunity: "Ignore Damage Immunity", ignoreResistanceImmunity: "Ignore Resistance & Immunity", causeVulnerability: "Cause Damage Vulnerability" } },
   defensive: { label: "Defensive Effect", icon: "fa-shield-halved", effects: { resistance: "Resistance", immunity: "Immunity", vulnerability: "Vulnerability", acBonus: "AC Bonus", saveBonus: "Saving Throw Bonus", saveAdvantage: "Saving Throw Advantage" } },
   healing: { label: "Healing / Recovery Effect", icon: "fa-heart-pulse", effects: { bonusHealing: "Bonus Healing", healingReceived: "Healing Received Modifier", temporaryHp: "Temporary HP", recoveryBonus: "Recovery Roll Bonus" } },
-  utility: { label: "Utility / Control Effect", icon: "fa-wand-magic-sparkles", effects: { movementControl: "Movement / Control", sizeChange: "Change Size", statusEffect: "Status / Condition", advantage: "Advantage", disadvantage: "Disadvantage", rollModifier: "Roll Bonus / Penalty (Dice)", activeEffect: "Apply Active Effect" } }
+  utility: { label: "Utility / Control Effect", icon: "fa-wand-magic-sparkles", effects: { movementControl: "Movement / Control", sizeChange: "Change Size", statusEffect: "Status / Condition", advantage: "Advantage", disadvantage: "Disadvantage", rollModifier: "Roll Bonus / Penalty (Dice)", acModifier: "AC Bonus / Penalty", activeEffect: "Apply Active Effect" } }
 };
-export const FORMULA_RULES = new Set(["extraDamage", "sameTypeDamage", "attackBonus", "reachBonus", "acBonus", "saveBonus", "bonusHealing", "healingReceived", "temporaryHp", "recoveryBonus", "movementControl", "rollModifier"]);
+export const FORMULA_RULES = new Set(["extraDamage", "sameTypeDamage", "attackBonus", "reachBonus", "acBonus", "saveBonus", "bonusHealing", "healingReceived", "temporaryHp", "recoveryBonus", "movementControl", "rollModifier", "acModifier"]);
 export const DAMAGE_RULES = new Set(["extraDamage", "sameTypeDamage", "resistance", "immunity", "vulnerability", "ignoreResistance", "ignoreImmunity", "ignoreResistanceImmunity", "causeVulnerability"]);
 export const OFFENSIVE_DAMAGE_RULES = new Set(["ignoreResistance", "ignoreImmunity", "ignoreResistanceImmunity", "causeVulnerability"]);
 export const DEFENSIVE_DAMAGE_RULES = new Set(["resistance", "immunity", "vulnerability"]);
@@ -203,6 +203,17 @@ export function signedModFormula(c) {
   if ( !subtract ) return dice;
   return /^[\w@.]+$/.test(dice) ? `-${dice}` : `-(${dice})`;
 }
+/** How long an effect applied to a target from the chat card lasts. */
+export const TARGET_DURATIONS = {
+  "": "The activity's duration",
+  turnEnd: "Until the end of your turn",
+  nextStart: "Until the start of your next turn",
+  nextEnd: "Until the end of your next turn"
+};
+/** Is this component an effect applied to a target from the chat card? */
+export function isTargetEffect(c) {
+  return (["statusEffect", "acModifier"].includes(c?.effect) && c.appliesTo === "target") || (c?.effect === "rollModifier" && c.rollWho === "target");
+}
 export const STATUS_TARGETS = { self: "The item user, while the item is active", target: "The target (apply from the chat card)" };
 export const RULE_PARTICIPANT_LABELS = {
   offensive: { source: "Attacker / Item User", target: "Target" },
@@ -356,6 +367,11 @@ export function ruleHandling(c, itemType="", { ownUse=defaultOwnUse(itemType) }=
         : "Built in: the item user grows (or shrinks) while the item is active. Tokens on the map are resized by Item Builder.", ignoresConditions: conditional && !onlyUserStatuses(c) };
     case "movementControl":
       return { mode: "native", note: "Built in as a change to the item user's speed (use a negative number to reduce it).", ignoresConditions: conditional && !onlyUserStatuses(c) };
+    case "acModifier":
+      if ( !String(c.formula ?? "").trim() ) return { mode: "reference", note: "Enter the AC change (such as -2) to automate this." };
+      return c.appliesTo === "target"
+        ? { mode: "native", note: "Built in as an Apply Effect button on the item's attack, save and damage cards: the target's AC changes.", ignoresConditions: conditional }
+        : { mode: "native", note: "Built in as a change to the item user's AC.", ignoresConditions: conditional && !onlyUserStatuses(c) };
     case "statusEffect":
       return c.appliesTo === "target"
         ? { mode: "native", note: "Built in as an Apply Effect button on the item's attack, save and damage cards.", ignoresConditions: conditional }
@@ -440,6 +456,7 @@ export function ruleFromComponent(c, itemType="", options={}) {
     skill: c.skill || "",
     rollTarget: c.effect === "rollModifier" ? modRollTarget(c) : (c.rollTarget || "attack"),
     appliesTo: c.appliesTo || "self",
+    targetDuration: isTargetEffect(c) ? (c.targetDuration || "") : "",
     rollWho: c.effect === "rollModifier" ? (c.rollWho || "self") : "",
     modSign: c.effect === "rollModifier" ? (modParts(c).subtract ? "subtract" : "add") : "",
     modFormula: c.effect === "rollModifier" ? signedModFormula(c) : "",
@@ -509,6 +526,8 @@ export function nativeChanges(c, itemType="", { ownUse=defaultOwnUse(itemType), 
     }
     case "acBonus":
       return formula ? [{ key: "system.attributes.ac.bonus", type: "add", value: formula, priority: 20 }] : [];
+    case "acModifier":
+      return formula && c.appliesTo !== "target" ? [{ key: "system.attributes.ac.bonus", type: "add", value: formula, priority: 20 }] : [];
     case "saveBonus":
       return formula ? [{ key: saveBonusKey(c.ability), type: "add", value: formula, priority: 20 }] : [];
     case "saveAdvantage":
@@ -598,7 +617,7 @@ export function ruleEffectData(c, { itemName, itemType, activeTier, ownUse=defau
     const info = statusInfo(c.status);
     if ( c.appliesTo === "target" ) {
       flags[MODULE_ID].statusTarget = true;
-      return withEffectChanges({ name: `${c.name || info.name}`, img: info.img, transfer: false, disabled: false, statuses: [c.status], flags }, []);
+      return targetDuration(withEffectChanges({ name: `${c.name || info.name}`, img: info.img, transfer: false, disabled: false, statuses: [c.status], flags }, []), c);
     }
     return withEffectChanges({ name: `${itemName}: ${c.name || info.name}`, img: info.img, transfer: true, disabled: minTier > activeTier, statuses: [c.status], flags }, []);
   }
@@ -611,11 +630,25 @@ export function ruleEffectData(c, { itemName, itemType, activeTier, ownUse=defau
     delete flags[MODULE_ID].userStatuses;
     if ( c.oneRoll ) flags[MODULE_ID].oneRoll = { roll: rt, ability: c.ability || "", skill: c.skill || "" };
     const { subtract } = modParts(c);
-    return withEffectChanges({
+    return targetDuration(withEffectChanges({
       name: c.name || `${itemName}: ${subtract ? "Penalty" : "Bonus"} to ${MOD_ROLL_TARGETS[rt].replace(/ \(.*\)/, "")}`,
       img: subtract ? "icons/svg/downgrade.svg" : "icons/svg/upgrade.svg",
       transfer: false, disabled: false, flags
-    }, rollBonusKeys(rt, { ability: c.ability, skill: c.skill }).map(key => ({ key, type: "add", value, priority: 20 })));
+    }, rollBonusKeys(rt, { ability: c.ability, skill: c.skill }).map(key => ({ key, type: "add", value, priority: 20 }))), c);
+  }
+
+  // "Reduce the target's AC by 2": an effect applied from the chat card.
+  if ( c.effect === "acModifier" && c.appliesTo === "target" ) {
+    const value = String(c.formula ?? "").trim();
+    if ( !value ) return null;
+    flags[MODULE_ID].statusTarget = true;
+    delete flags[MODULE_ID].userStatuses;
+    const lower = /^-/.test(value);
+    return targetDuration(withEffectChanges({
+      name: c.name || `${itemName}: AC ${lower ? value : `+${value}`}`,
+      img: lower ? "icons/svg/downgrade.svg" : "icons/svg/upgrade.svg",
+      transfer: false, disabled: false, flags
+    }, [{ key: "system.attributes.ac.bonus", type: "add", value, priority: 20 }]), c);
   }
 
   const changes = nativeChanges(c, itemType, { ownUse, itemName, baseSize });
@@ -1117,6 +1150,64 @@ function actionTypeOf(activity, attackMode) {
   return String(activity?.type ?? "").toLowerCase();
 }
 
+/**
+ * Give an effect applied to a target its "how long" choice. D&D5e 6 ends "until the start / end of your next
+ * turn" effects itself; Item Builder ends "until the end of your turn" ones (and all three on D&D5e 5.3).
+ * The effect also gets a one-round duration so D&D5e doesn't replace it with the activity's duration.
+ */
+function targetDuration(data, c) {
+  const mode = c.targetDuration || "";
+  if ( !data || !mode ) return data;
+  const d6 = isDnd5e6();
+  data.flags[MODULE_ID].expireWith = mode;
+  if ( d6 && mode === "nextStart" ) data.duration = { expiry: "sourceStart", value: null };
+  else if ( d6 && mode === "nextEnd" ) data.duration = { expiry: "sourceEnd", value: null };
+  else data.duration = d6 ? { value: 1, units: "rounds" } : { rounds: 1 };
+  // Dynamic Active Effects / Times Up understand the same choices.
+  data.flags.dae = { ...(data.flags.dae ?? {}), specialDuration: [{ turnEnd: "turnEndSource", nextStart: "turnStartSource", nextEnd: "turnEndSource" }[mode]] };
+  return data;
+}
+
+/** The actor whose item applied an effect. */
+function effectSourceActor(effect) {
+  try {
+    const src = effect.getSourceActor?.();
+    if ( src ) return src;
+  } catch {}
+  const origin = effect.origin ? resolveUuidSync(effect.origin) : null;
+  return origin?.actor ?? (origin?.documentName === "Actor" ? origin : null) ?? origin?.item?.actor ?? null;
+}
+
+/** Ends target effects whose "how long" choice has run out. Runs on the active GM's client. */
+function registerTargetExpiry() {
+  Hooks.on("combatTurnChange", (combat, prior, current) => {
+    try {
+      if ( game.users?.activeGM !== game.user ) return;
+      const ended = combat.combatants.get(prior?.combatantId)?.actor ?? null;
+      const starting = combat.combatants.get(current?.combatantId)?.actor ?? null;
+      const d6 = isDnd5e6();
+      const actors = new Set([...combat.combatants].map(cb => cb.actor).filter(Boolean));
+      for ( const t of globalThis.canvas?.tokens?.placeables ?? [] ) if ( t.actor ) actors.add(t.actor);
+      for ( const actor of actors ) {
+        const done = [];
+        for ( const effect of actor.effects ?? [] ) {
+          const mode = effect.flags?.[MODULE_ID]?.expireWith;
+          if ( !mode || (d6 && mode !== "turnEnd") ) continue;
+          const source = effectSourceActor(effect);
+          if ( !source ) continue;
+          const startRound = effect.start?.round ?? effect.duration?.startRound;
+          const startTurn = effect.start?.turn ?? effect.duration?.startTurn;
+          const appliedThen = (r, t) => startRound === r && startTurn === t;
+          if ( mode === "turnEnd" && ended === source ) done.push(effect.id);
+          else if ( mode === "nextEnd" && ended === source && !appliedThen(prior.round, prior.turn) ) done.push(effect.id);
+          else if ( mode === "nextStart" && starting === source && !appliedThen(current.round, current.turn) ) done.push(effect.id);
+        }
+        if ( done.length ) actor.deleteEmbeddedDocuments("ActiveEffect", done).catch(err => console.error(`${MODULE_ID} | target effect expiry`, err));
+      }
+    } catch (err) { console.error(`${MODULE_ID} | target effect expiry`, err); }
+  });
+}
+
 /** Is this stored rule a Roll Bonus / Penalty on these rolls? */
 function isMod(rule, who, roll) {
   return rule?.effect === "rollModifier" && (rule.rollWho || "self") === who && rule.rollTarget === roll && !!String(rule.modFormula ?? "").trim();
@@ -1551,6 +1642,7 @@ export function registerRuleHooks() {
   registered = true;
   registerStatusGates();
   registerOneRollHooks();
+  registerTargetExpiry();
 
   // Only the base hook names are used: D&D5e fires both `preRollX` and `preRollXV2`
   // for every roll, and listening to both would apply bonuses twice.

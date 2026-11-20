@@ -8,7 +8,7 @@
  */
 import { MODULE_ID, usesLabel } from "./compat.mjs";
 import { backgroundLines } from "./background.mjs";
-import { RULE_CATEGORIES, ROLL_TARGETS, modParts, modRollTarget, participantLabels, statusChoices, triggerOptions } from "./rules.mjs";
+import { RULE_CATEGORIES, ROLL_TARGETS, isTargetEffect, modParts, modRollTarget, participantLabels, statusChoices, triggerOptions } from "./rules.mjs";
 import { reactionSummary } from "./reactions.mjs";
 import { rechargeSummary } from "./recharge.mjs";
 import { requirementLine } from "./requirements.mjs";
@@ -43,6 +43,23 @@ function signedPhrase(formula, words) {
   return neg ? `Subtract ${f} from ${words}` : `+${f} to ${words}`;
 }
 
+/** " until the end of your turn" for an effect applied to a target, or "". */
+function durationWords(c) {
+  if ( !isTargetEffect(c) ) return "";
+  return { turnEnd: " until the end of your turn", nextStart: " until the start of your next turn", nextEnd: " until the end of your next turn" }[c.targetDuration] ?? "";
+}
+
+/** Sentence for an AC Bonus / Penalty. */
+function acModWords(c, player) {
+  const raw = String(c.formula ?? "").trim() || "?";
+  const lower = /^-/.test(raw), n = raw.replace(/^[-+]\s*/, "");
+  if ( c.appliesTo === "target" ) {
+    const change = `${lower ? "lower" : "raise"} the target's AC by ${n}${durationWords(c)}`;
+    return player ? `Its attacks and effects can ${change}` : `${lower ? "Lower" : "Raise"} the target's AC by ${n}${durationWords(c)}`;
+  }
+  return lower ? `-${n} AC` : `+${n} AC`;
+}
+
 /** Sentence for a Roll Bonus / Penalty. */
 function rollModWords(c, player) {
   const { dice, subtract } = modParts(c);
@@ -58,7 +75,7 @@ function rollModWords(c, player) {
     case "savers":
       return `Creatures making ${rollWords({ ...c, rollTarget: "save" })} against your spells and abilities ${verb} ${f} ${prep} the roll`;
     case "target":
-      return `${player ? "Its attacks and effects can make the target" : "The target can be made to"} ${verb} ${f} ${prep} ${c.oneRoll ? `its next ${words.replace(/\b(roll|throw|check)s\b/, "$1")}` : `its ${words}`}`;
+      return `${player ? "Its attacks and effects can make the target" : "The target can be made to"} ${verb} ${f} ${prep} ${c.oneRoll ? `its next ${words.replace(/\b(roll|throw|check)s\b/, "$1")}` : `its ${words}`}${durationWords(c)}`;
     default:
       return player ? `You ${verb} ${f} ${prep} your ${words}` : `${subtract ? "Subtract" : "Add"} ${f} ${prep} ${words}`;
   }
@@ -109,7 +126,8 @@ export function ruleSentence(c, { player=false }={}){
     movementControl:`${/^-/.test(f)?f:`+${f}`} ft. ${moveWord(c.ability||"walk")} speed`,
     advantage:`Advantage on ${rollWords(c)}`,
     disadvantage:`Disadvantage on ${rollWords(c)}`,
-    rollModifier:rollModWords(c,player)
+    rollModifier:rollModWords(c,player),
+    acModifier:acModWords(c,player)
   }[c.effect]??(RULE_CATEGORIES[c.ruleCategory]?.effects?.[c.effect]??"This effect");
   const parts=[effect];
   if(c.ruleCategory==="defensive"){
@@ -274,7 +292,7 @@ export function componentLine(c, { spellName, names={} }={}) {
         const st = (globalThis.CONFIG?.statusEffects ?? []).find(e => e.id === c.status);
         const name = st ? loc(st.name ?? st.label, c.status) : c.status;
         return c.appliesTo === "target"
-          ? `Its attacks and effects can make the target ${name.toLowerCase()}`
+          ? `Its attacks and effects can make the target ${name.toLowerCase()}${durationWords(c)}`
           : `You are ${name.toLowerCase()} while you have it`;
       }
       if ( c.effect === "activeEffect" ) {

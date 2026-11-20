@@ -942,7 +942,27 @@ export function parseDescription(text, ctx={}) {
     const optionalBoost = /\b(?:expend|use this (?:feature|ability|trait|power)|use (?:your|a) reaction|as a reaction|when you fail|fails? (?:a|an|the) (?:saving throw|check|attack)|after (?:you )?(?:see|roll|make)|before (?:you|the dm)|times equal|once (?:per|before|within|on each)|uses? of|inspiration die|superiority die|until the end of (?:your|its) (?:next )?turn|rather than|potentially|still fails?)\b/.test(s)
       || (boostCarry && /\b(?:the|that|this) (?:check|roll|saving throw|attack roll)\b/.test(s));
     boostCarry = optionalBoost;
-    if ( !requirementSentence && !statBlock && !optionalBoost && /\d*d\d+/.test(s) ) {
+    // "…reducing their Armor Class by 2 until the end of your turn", "the target takes a -2 penalty to AC".
+    if ( !requirementSentence && !statBlock && /\b(?:armor class|ac)\b/.test(s) ) {
+      const NUM = "(\\d+|one|two|three|four|five)";
+      const WHO = "(its|their|the target's|the target creature's|that creature's|the creature's|a creature's|each creature's|your)";
+      const words = { one: 1, two: 2, three: 3, four: 4, five: 5 };
+      let m, who = "", n = "";
+      if ( (m = s.match(new RegExp(`\\b(?:reduc(?:e|es|ing)|lower(?:s|ing)?|decreas(?:e|es|ing))\\s+(?:the\\s+)?${WHO}\\s+(?:armor class|ac)\\b(?:\\s*\\(ac\\))?\\s+by\\s+${NUM}\\b`))) ) [who, n] = [m[1], m[2]];
+      else if ( (m = s.match(new RegExp(`\\b${WHO}\\s+(?:armor class|ac)\\s+(?:is |are )?(?:reduced|lowered|decreased)\\s+by\\s+${NUM}\\b`))) ) [who, n] = [m[1], m[2]];
+      else if ( (m = s.match(new RegExp(`\\b(the target|it|that creature|the creature|each creature)\\s+(?:takes|has|suffers|gets)\\s+a\\s+-?\\s*${NUM}\\s+penalty\\s+to\\s+(?:its\\s+)?(?:armor class|ac)\\b`))) ) [who, n] = [m[1], m[2]];
+      n = words[n] ?? n;
+      if ( who && n ) {
+        const self = who === "your";
+        const lasts = /\buntil the end of your next turn\b/.test(s) ? "nextEnd" : /\buntil the start of your next turn\b/.test(s) ? "nextStart"
+          : /\buntil the end of (?:your|the|this) (?:current )?turn\b/.test(s) ? "turnEnd" : "";
+        const lastsWords = { nextEnd: " until the end of your next turn", nextStart: " until the start of your next turn", turnEnd: " until the end of your turn" }[lasts] ?? "";
+        add(self ? `Your AC is reduced by ${n}` : `Target's AC lowered by ${n}${lastsWords}`, { type: "utility", effect: "acModifier",
+          name: self ? `AC -${n}` : `Target AC -${n}`, formula: `-${n}`, appliesTo: self ? "self" : "target", targetDuration: self ? "" : lasts });
+      }
+    }
+
+    if ( !requirementSentence && !statBlock && /\d*d\d+/.test(s) ) {
       const DICE = "(\\d*d\\d+(?:\\s*[+-]\\s*\\d+)?)";
       const rollOf = p => /\binitiative\b/.test(p) ? "initiative" : /\bconcentration\b/.test(p) ? "concentration"
         : /\bdamage\b/.test(p) ? "damage" : /\battack/.test(p) ? "attack" : skillsIn(p, T).length ? "skill"
@@ -976,12 +996,15 @@ export function parseDescription(text, ctx={}) {
           else if ( /\b(?:creatures?|attackers?|enem(?:y|ies)|foes?)\b[^.;]{0,30}\b(?:attack(?:s|ing)?|hit(?:s|ting)?|target(?:s|ing)?) you\b[^.;]*$|\battack rolls? (?:made )?against you\b[^.;]*$/.test(lead) || /\bagainst you\b/.test(rollText) ) who = "attackers";
           else if ( /\b(?:the|a|that|one|each) (?:target|creature)\b[^.;]{0,40}$|\bit\s+(?:must\s+)?$/.test(lead) && !/\byou\b[^.;]{0,15}$/.test(lead) ) who = "target";
         }
+        if ( optionalBoost && who !== "target" ) continue;
         if ( who === "savers" && roll !== "save" ) continue;
         if ( who === "attackers" && !["attack", "damage"].includes(roll) ) continue;
         if ( who === "self" && roll === "damage" && !mod.subtract ) continue;
         const ab = ["save", "check"].includes(roll) ? (abilityIn(mod.roll, T) || (/\bsaving throws?\b|\bchecks?\b/.test(leadClause.split(/,/).at(0)) ? abilityIn(leadClause.split(/,/).at(0), T) : "")) : "";
         const sk = roll === "skill" ? skillsIn(rollText, T)[0] ?? "" : "";
-        const once = who === "target" && /\bnext\b/.test(rollText);
+        const once = who === "target" && /\bnext\b/.test(mod.roll.replace(/\buntil\b.*$/, ""));
+        const lasts = who !== "target" ? "" : /\buntil the end of your next turn\b/.test(s) ? "nextEnd" : /\buntil the start of your next turn\b/.test(s) ? "nextStart"
+          : /\buntil the end of (?:your|the|this) (?:current )?turn\b/.test(s) ? "turnEnd" : "";
         const key = `${who}|${roll}|${ab}|${sk}|${mod.dice}|${mod.subtract}`;
         if ( seen.has(key) ) continue;
         seen.add(key);
@@ -997,7 +1020,7 @@ export function parseDescription(text, ctx={}) {
           savers: `Creatures saving against you ${mod.subtract ? "subtract" : "add"} ${mod.dice}${fromWho}`,
           target: `Target ${mod.subtract ? "subtracts" : "adds"} ${mod.dice} ${mod.subtract ? "from" : "to"} ${once ? `its next ${lc(rollName).replace(/\b(roll|throw|check)s\b/, "$1")}` : `its ${lc(rollName)}`}` }[who];
         add(label, { type: "utility", effect: "rollModifier", name: `${mod.subtract ? "-" : "+"}${mod.dice} ${rollName}`, formula: mod.dice, modSign: mod.subtract ? "subtract" : "add",
-          rollWho: who, rollTarget: roll, ability: ab, skill: sk, oneRoll: once, ...(types.length ? { targetTypes: types } : {}) });
+          rollWho: who, rollTarget: roll, ability: ab, skill: sk, oneRoll: once, targetDuration: lasts, ...(types.length ? { targetTypes: types } : {}) });
       }
     }
 
