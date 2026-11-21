@@ -2,6 +2,14 @@
 
 All notable changes to Item Builder 5e.
 
+## v1.2.5 D&D5e 6.1.1, and starting up alongside other modules
+
+- **Verified with D&D5e 6.1.1** (Foundry 14). Checked the hooks, data paths, activities, effects, damage and rest handling Item Builder relies on; nothing it uses changed.
+- **Fix: Item Builder could stop loading part-way.** If another module had already wrapped ActiveEffect "is suppressed" through libWrapper, Item Builder's start-up hit an error. Its roll, damage, recharge, token-size, requirement, light and feat hooks were then never set up, and its settings weren't registered.
+  - Item Builder now wraps that check through libWrapper when it's active, so both modules work together.
+  - Each part of Item Builder now starts independently, so a clash in one can't stop the rest.
+- **Describe It** reads "your size becomes Large" as a size change. Before, it was left as rules text (or read as a "your size" filter).
+
 ## v1.2.4 Fix: "until the end of your turn" with unlinked tokens
 
 - An effect lasting "until the end of your turn" (or the start or end of your next turn) is now removed when the item user's token isn't linked to its actor. Before, Item Builder didn't recognize the token's actor as the same creature, so the effect stayed until D&D5e removed it a turn later.
