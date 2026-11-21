@@ -1689,24 +1689,54 @@ function hasGatedEffects(actor) {
  * "while bloodied"). They are suppressed, not disabled, so nothing is written to the database and
  * the item's tier and Active While settings keep working as before.
  */
-function registerStatusGates() {
+/** Should Item Builder hold back this effect because the item user lacks a required condition? */
+function gateSuppressed(effect) {
+  const need = effect.flags?.[MODULE_ID]?.userStatuses;
+  if ( !need?.length ) return false;
+  const actor = effect.parent?.documentName === "Item" ? effect.parent.actor : effect.parent?.documentName === "Actor" ? effect.parent : null;
+  if ( !actor ) return false;
+  // Bloodied needs the hit point maximum, which isn't worked out yet the first time a creature
+  // is prepared: check again once it is.
+  if ( need.includes("bloodied") ) recheckWhenHpKnown(actor);
+  return !actorHasAnyStatus(actor, need);
+}
+
+/**
+ * Extend ActiveEffect#isSuppressed so "only while raging" effects switch themselves on and off.
+ * Uses libWrapper when it is active, so other modules that also wrap isSuppressed keep working; otherwise
+ * replaces the getter directly. If neither is possible (another module locked the property), conditional
+ * effects stay always on and everything else in Item Builder still works.
+ */
+function patchIsSuppressed() {
   const cls = globalThis.CONFIG?.ActiveEffect?.documentClass;
-  if ( !cls ) return;
-  const base = getterOf(cls.prototype, "isSuppressed");
-  Object.defineProperty(cls.prototype, "isSuppressed", {
-    configurable: true,
-    get() {
-      if ( base?.call(this) ) return true;
-      const need = this.flags?.[MODULE_ID]?.userStatuses;
-      if ( !need?.length ) return false;
-      const actor = this.parent?.documentName === "Item" ? this.parent.actor : this.parent?.documentName === "Actor" ? this.parent : null;
-      if ( !actor ) return false;
-      // Bloodied needs the hit point maximum, which isn't worked out yet the first time a creature
-      // is prepared: check again once it is.
-      if ( need.includes("bloodied") ) recheckWhenHpKnown(actor);
-      return !actorHasAnyStatus(actor, need);
-    }
-  });
+  if ( !cls ) return false;
+  if ( globalThis.libWrapper?.register ) {
+    try {
+      globalThis.libWrapper.register(MODULE_ID, "CONFIG.ActiveEffect.documentClass.prototype.isSuppressed", function(wrapped, ...args) {
+        return wrapped(...args) || gateSuppressed(this);
+      }, "WRAPPER");
+      return true;
+    } catch (err) { console.warn(`${MODULE_ID} | libWrapper could not wrap ActiveEffect#isSuppressed`, err); }
+  }
+  for ( const proto of [cls.prototype, Object.getPrototypeOf(cls.prototype)] ) {
+    if ( !proto ) continue;
+    const own = Object.getOwnPropertyDescriptor(proto, "isSuppressed");
+    if ( own && !own.configurable ) continue;
+    const base = getterOf(proto, "isSuppressed");
+    try {
+      Object.defineProperty(proto, "isSuppressed", {
+        configurable: true,
+        get() { return !!base?.call(this) || gateSuppressed(this); }
+      });
+      return true;
+    } catch (err) { console.warn(`${MODULE_ID} | could not extend ActiveEffect#isSuppressed`, err); }
+  }
+  console.warn(`${MODULE_ID} | Another module has locked ActiveEffect#isSuppressed. Effects limited to the item user's conditions (such as "while raging") will stay on all the time.`);
+  return false;
+}
+
+function registerStatusGates() {
+  patchIsSuppressed();
   // Hit points changing can start or end Bloodied: remember the new maximum and re-prepare.
   Hooks.on("updateActor", (actor, change) => {
     if ( !foundry.utils.hasProperty(change, "system.attributes.hp") ) return;
@@ -1730,9 +1760,10 @@ function registerStatusGates() {
 export function registerRuleHooks() {
   if ( registered ) return;
   registered = true;
-  registerStatusGates();
-  registerOneRollHooks();
-  registerTargetExpiry();
+  // Each group is independent: one failing (for example because of another module) must not stop the rest.
+  for ( const [name, fn] of [["status gates", registerStatusGates], ["next-roll effects", registerOneRollHooks], ["target effect expiry", registerTargetExpiry]] ) {
+    try { fn(); } catch (err) { console.error(`${MODULE_ID} | could not register ${name}`, err); }
+  }
 
   // Only the base hook names are used: D&D5e fires both `preRollX` and `preRollXV2`
   // for every roll, and listening to both would apply bonuses twice.

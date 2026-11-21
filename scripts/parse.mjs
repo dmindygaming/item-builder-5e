@@ -119,7 +119,7 @@ const SIZE_RES = [
   [/\b(?:creatures?|targets?|enem(?:y|ies)|foes?|attackers?|opponents?|monsters?|it|they|one)\s+(?:that (?:is|are)\s+|who (?:is|are)\s+|(?:is|are)\s+)?(?:at least\s+(one|two|three|four|\d)\s+sizes?\s+)?(larger|bigger|smaller)\s+than (?:you|yourself|the wearer|the wielder)\b/, m => [m[2], m[1]]],
   [/\b(larger|bigger|smaller)\s+(?:creatures?|targets?|enem(?:y|ies)|foes?|attackers?|opponents?)\b/, m => [m[1], null]],
   [/\b(?:your size or (larger|bigger|smaller)|(larger|bigger|smaller) than or (?:the same|equal to your) size)\b/, m => ["or" + (m[1] ?? m[2]), null]],
-  [/\b(?:the same size as you|your own size|your size)\b/, () => ["same", null]]
+  [/\b(?:the same size as you|your own size|your size(?!\s+(?:becomes?|is|increases?|decreases?|changes?|grows?|shrinks?|turns?|returns?)\b))\b/, () => ["same", null]]
 ];
 function sizeIn(s) {
   for ( const [re, f] of SIZE_RES ) {
@@ -1193,7 +1193,7 @@ export function parseDescription(text, ctx={}) {
     }
 
     // --- Size ---
-    if ( (m = s.match(/\b(?:grows?|becomes?|turns?|increases?) (?:to |into )?(?:size )?(tiny|small|medium|large|huge|gargantuan)\b(?! creature that)/)) && /\byou\b|\bwielder\b|\bwearer\b|\buser\b/.test(s) ) {
+    if ( (m = s.match(/\b(?:grows?|becomes?|turns?|increases?) (?:to |into )?(?:size )?(tiny|small|medium|large|huge|gargantuan)\b(?! creature that)/)) && /\byour?\b|\bwielder\b|\bwearer\b|\buser\b/.test(s) ) {
       add(`Size becomes ${cap(m[1])}`, { type: "utility", effect: "sizeChange", name: `Size: ${cap(m[1])}`, sizeMode: "set", size: SIZE_WORDS[m[1]] });
     } else if ( !sizeIn(s) && (m = s.match(new RegExp(`\\b(grows?|increases?|shrinks?|decreases?|reduces?)[a-z ]*? by ${NUMBER} size|\\b${NUMBER} sizes? (larger|bigger|smaller)`))) ) {
       const shrink = /shrink|decrease|reduce|smaller/.test(m[0]);
@@ -1245,6 +1245,7 @@ export function parseDescription(text, ctx={}) {
       const r = f.component;
       if ( !r || !RULE_TYPES.has(r.type) || r.type === "healing" ) continue;
       if ( r.type === "utility" && ["check", "skill", "initiative", "concentration"].includes(r.rollTarget) ) continue;
+      if ( r.effect === "sizeChange" ) continue;
       r.sizeCompare = size.compare; r.sizeSteps = size.steps;
       if ( size.sizeKey ) r.sizeKey = size.sizeKey;
       const said = size.sizeKey ? `${Object.keys(SIZE_KEY_WORDS).find(k => SIZE_KEY_WORDS[k] === size.sizeKey)} or ${size.compare === "minSize" ? "larger" : "smaller"}` : `${size.steps !== "1" ? `at least ${size.steps} sizes ` : ""}${SIZE_SAID[size.compare]}`;

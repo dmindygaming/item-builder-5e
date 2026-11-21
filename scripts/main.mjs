@@ -23,7 +23,7 @@ import {
   itemHasOwnUse, ruleFromComponent, sizeAfter, ruleHandling, syncRuleEffects
 } from "./rules.mjs";
 
-const MODULE_VERSION = "1.2.4";
+const MODULE_VERSION = "1.2.5";
 /** Returns every Fighting Style feat (cached), set up at init. */
 let fightingStyles = async () => [];
 /** Every feat (cached), set up at init. */
@@ -1774,19 +1774,26 @@ function openBuilder(){
 }
 
 Hooks.once("init",()=>{
-  registerRuleHooks();
-  registerRechargeHooks();
-  registerTokenSizeHooks();
-  registerRequirementHooks();
-  registerLightHooks();
-  fightingStyles = registerFightingStyleHooks();
-  featCatalog = registerFeatHooks();
-  registerHelpMenu();
+  // Settings first, and each part on its own: an error in one (for example a clash with another module)
+  // must not stop the rest of Item Builder from loading.
   // Retained as a hidden legacy setting so existing worlds do not lose stored configuration.
   // Extra damage now travels through D&D5e's native damage card and application controls.
   game.settings.register(MODULE_ID,"autoExtra",{name:"Legacy automatic conditional extra damage",scope:"world",config:false,type:Boolean,default:true,restricted:true});
   game.settings.register(MODULE_ID,"effectMigration",{scope:"world",config:false,type:String,default:"",restricted:true});
   game.settings.register(MODULE_ID,"debugRules",{name:"Item Builder rule diagnostics",hint:"Logs the actual source/target creature metadata and rule match result to the browser console.",scope:"world",config:true,type:Boolean,default:false,restricted:true});
+  const parts=[
+    ["rules",()=>registerRuleHooks()],
+    ["recharges",()=>registerRechargeHooks()],
+    ["token size",()=>registerTokenSizeHooks()],
+    ["requirements",()=>registerRequirementHooks()],
+    ["light",()=>registerLightHooks()],
+    ["fighting styles",()=>{fightingStyles=registerFightingStyleHooks();}],
+    ["feats",()=>{featCatalog=registerFeatHooks();}],
+    ["guide",()=>registerHelpMenu()]
+  ];
+  for(const [name,fn] of parts){
+    try{fn();}catch(err){console.error(`${MODULE_ID} | could not start ${name}`,err);}
+  }
 });
 Hooks.once("ready",()=>{
   game.modules.get(MODULE_ID).api={
